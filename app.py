@@ -14,152 +14,176 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- BANCO DE DADOS (SQLite - Inicialização Imediata e Segura) ---
+# --- BANCO DE DADOS (Criação e Inicialização Automática) ---
 DB_NAME = "orcamento.db"
 
 def get_connection():
     return sqlite3.connect(DB_NAME, check_same_thread=False)
 
 def init_db():
-    with get_connection() as conn:
-        c = conn.cursor()
+    """Cria o banco de dados e todas as tabelas necessárias de forma segura."""
+    conn = get_connection()
+    c = conn.cursor()
+    
+    # 1. Tabela de Usuários
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            username TEXT PRIMARY KEY,
+            senha TEXT
+        )
+    ''')
+    
+    # 2. Tabela de Lançamentos
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS lancamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tipo TEXT,
+            categoria TEXT,
+            valor REAL,
+            meio_pagamento TEXT,
+            data TEXT,
+            observacao TEXT,
+            usuario TEXT
+        )
+    ''')
+    
+    # 3. Tabela de Metas
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS metas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT UNIQUE,
+            descricao TEXT,
+            valor_atual REAL,
+            valor_objetivo REAL,
+            prazo TEXT
+        )
+    ''')
+    
+    # 4. Tabela de Benefícios
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS beneficios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT UNIQUE,
+            valor_mensal REAL,
+            valor_gasto REAL
+        )
+    ''')
+    
+    # Inserir usuários padrão se não existirem
+    c.execute("INSERT OR IGNORE INTO usuarios (username, senha) VALUES ('Jack', '1234')")
+    c.execute("INSERT OR IGNORE INTO usuarios (username, senha) VALUES ('Loli', '1234')")
+    
+    # Inserir Metas Iniciais se a tabela estiver vazia
+    c.execute("SELECT COUNT(*) FROM metas")
+    if c.fetchone()[0] == 0:
+        metas_iniciais = [
+            ("METINHAZINHA", "Um jantar, um sapato, uma blusinha", 0.0, 500.0, "3 meses"),
+            ("METINHA", "Reserva de Emergência", 0.0, 5000.0, "6 meses a 1 ano"),
+            ("META", "Viagem Internacional", 0.0, 20000.0, "1 a 3 anos"),
+            ("METONA", "Casa Própria", 0.0, 200000.0, "3 a 10 anos"),
+            ("METAZONA", "Aposentadoria", 0.0, 1000000.0, "10 a 30 anos")
+        ]
+        c.executemany("INSERT OR IGNORE INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)", metas_iniciais)
         
-        # 1. Tabela de Usuários
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS usuarios (
-                username TEXT PRIMARY KEY,
-                senha TEXT
-            )
-        ''')
+    # Inserir Benefícios Iniciais se a tabela estiver vazia
+    c.execute("SELECT COUNT(*) FROM beneficios")
+    if c.fetchone()[0] == 0:
+        beneficios_iniciais = [
+            ("Vale Refeição", 700.0, 0.0),
+            ("Vale Alimentação", 3000.0, 0.0),
+            ("Vale Combustível", 1012.0, 0.0)
+        ]
+        c.executemany("INSERT OR IGNORE INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)", beneficios_iniciais)
         
-        # 2. Tabela de Lançamentos
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS lancamentos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tipo TEXT,
-                categoria TEXT,
-                valor REAL,
-                meio_pagamento TEXT,
-                data TEXT,
-                observacao TEXT,
-                usuario TEXT
-            )
-        ''')
-        
-        # 3. Tabela de Metas
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS metas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT UNIQUE,
-                descricao TEXT,
-                valor_atual REAL,
-                valor_objetivo REAL,
-                prazo TEXT
-            )
-        ''')
-        
-        # 4. Tabela de Benefícios
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS beneficios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT UNIQUE,
-                valor_mensal REAL,
-                valor_gasto REAL
-            )
-        ''')
-        
-        # Garantir usuários padrão
-        c.execute("SELECT COUNT(*) FROM usuarios")
-        if c.fetchone()[0] == 0:
-            c.execute("INSERT OR IGNORE INTO usuarios VALUES ('Jack', '1234')")
-            c.execute("INSERT OR IGNORE INTO usuarios VALUES ('Loli', '1234')")
-            
-        # Garantir metas iniciais
-        c.execute("SELECT COUNT(*) FROM metas")
-        if c.fetchone()[0] == 0:
-            metas_iniciais = [
-                ("METINHAZINHA", "Um jantar, um sapato, uma blusinha", 0.0, 500.0, "3 meses"),
-                ("METINHA", "Reserva de Emergência", 0.0, 5000.0, "6 meses a 1 ano"),
-                ("META", "Viagem Internacional", 0.0, 20000.0, "1 a 3 anos"),
-                ("METONA", "Casa Própria", 0.0, 200000.0, "3 a 10 anos"),
-                ("METAZONA", "Aposentadoria", 0.0, 1000000.0, "10 a 30 anos")
-            ]
-            c.executemany("INSERT OR IGNORE INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)", metas_iniciais)
-            
-        # Garantir benefícios iniciais
-        c.execute("SELECT COUNT(*) FROM beneficios")
-        if c.fetchone()[0] == 0:
-            beneficios_iniciais = [
-                ("Vale Refeição", 700.0, 0.0),
-                ("Vale Alimentação", 3000.0, 0.0),
-                ("Vale Combustível", 1012.0, 0.0)
-            ]
-            c.executemany("INSERT OR IGNORE INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)", beneficios_iniciais)
-            
-        conn.commit()
+    conn.commit()
+    conn.close()
 
-# Garante que as tabelas existem ANTES de qualquer renderização da tela
+# Executa imediatamente a inicialização do banco para evitar o OperationalError
 init_db()
 
-# --- FUNÇÕES AUXILIARES DE BANCO DE DADOS ---
+# --- FUNÇÕES CONSULTA E EXECUÇÃO SEGURAS ---
 def run_query(query, params=()):
-    with get_connection() as conn:
-        return pd.read_sql_query(query, conn, params=params)
+    try:
+        with get_connection() as conn:
+            return pd.read_sql_query(query, conn, params=params)
+    except Exception:
+        init_db()
+        with get_connection() as conn:
+            return pd.read_sql_query(query, conn, params=params)
 
 def execute_db(query, params=()):
-    with get_connection() as conn:
-        c = conn.cursor()
-        c.execute(query, params)
-        conn.commit()
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute(query, params)
+            conn.commit()
+    except Exception:
+        init_db()
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute(query, params)
+            conn.commit()
 
 def verificar_login(user, senha):
-    with get_connection() as conn:
-        c = conn.cursor()
-        c.execute("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
-        return c.fetchone() is not None
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
+            return c.fetchone() is not None
+    except sqlite3.OperationalError:
+        init_db()
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
+            return c.fetchone() is not None
 
-# --- CSS CUSTOMIZADO (Correção de cores e ilhas brancas no Dropdown) ---
+# --- CSS CUSTOMIZADO (Força o Fundo Escuro em Todos os Inputs e Popovers) ---
 st.markdown("""
 <style>
-    /* Estilo do fundo da aplicação */
+    /* Estilo do fundo e texto global */
     .stApp {
         background-color: #0f172a !important;
         color: #ffffff !important;
     }
     
-    /* Textos gerais em branco */
     p, span, label, div, h1, h2, h3, h4, h5, h6 {
         color: #ffffff !important;
     }
 
-    /* Correção total para Selectbox / Dropdown e seus Popups */
-    div[data-baseweb="select"] > div, 
+    /* Força fundo escuro e texto claro nas caixas de Input de Texto e Senha */
+    div[data-baseweb="input"], 
+    div[data-baseweb="input"] > div, 
+    input[type="text"], 
+    input[type="password"] {
+        background-color: #1e293b !important;
+        color: #ffffff !important;
+        border-color: #334155 !important;
+    }
+
+    /* Força fundo escuro na caixa de Selectbox */
+    div[data-baseweb="select"], 
+    div[data-baseweb="select"] > div {
+        background-color: #1e293b !important;
+        color: #ffffff !important;
+        border-color: #334155 !important;
+    }
+
+    /* Estilização do Menu Suspenso (Dropdown/Popover que abre ao clicar) */
     div[data-baseweb="popover"],
     ul[role="listbox"],
     li[role="option"] {
         background-color: #1e293b !important;
         color: #ffffff !important;
-        border-color: #334155 !important;
     }
 
-    /* Item selecionado/hover na lista suspensa */
-    li[role="option"]:hover, li[aria-selected="true"] {
+    /* Destaque ao passar o mouse na opção do dropdown */
+    li[role="option"]:hover, 
+    li[aria-selected="true"] {
         background-color: #334155 !important;
         color: #38bdf8 !important;
     }
 
-    /* Correção dos Inputs de Texto e Senha */
-    div[data-baseweb="input"] > div {
-        background-color: #1e293b !important;
-        color: #ffffff !important;
-        border-color: #334155 !important;
-    }
-
-    input {
-        color: #ffffff !important;
-    }
-
-    /* Estilização das Abas (Entrar / Esqueci Senha) */
+    /* Estilação das Abas (Entrar / Alterar Senha) */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
     }
@@ -171,7 +195,7 @@ st.markdown("""
         font-weight: bold;
     }
 
-    /* Botão Primário */
+    /* Estilo do Botão Principal */
     .stButton>button {
         background-color: #2563eb !important;
         color: #ffffff !important;
@@ -179,12 +203,13 @@ st.markdown("""
         border: none;
         width: 100%;
         font-weight: 600;
+        padding: 8px 16px;
     }
     .stButton>button:hover {
         background-color: #1d4ed8 !important;
     }
 
-    /* Ocultar elementos desnecessários */
+    /* Ocultar elementos padrão */
     #MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
@@ -194,7 +219,7 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = ""
 
-# --- TELA DE LOGIN CORRIGIDA ---
+# --- TELA DE LOGIN ---
 def tela_login():
     st.markdown("<h2 style='text-align: center;'>🔐 Acesso Restrito - Jack & Loli</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #94a3b8;'>Entre com suas credenciais para acessar o orçamento doméstico.</p>", unsafe_allow_html=True)
@@ -265,7 +290,7 @@ with col_head3:
         st.session_state.logged_in = False
         st.rerun()
 
-# --- MÓDULO 1: DASHBOARD ---
+# --- MÓDULOS DA APLICAÇÃO ---
 if selected == "Dashboard":
     st.markdown("## 📊 Dashboard")
     st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')})")
@@ -284,7 +309,6 @@ if selected == "Dashboard":
     with c3:
         st.metric("Saldo", f"R$ {saldo:,.2f}")
 
-# --- MÓDULO 2: LANÇAR ---
 elif selected == "Lançar":
     st.markdown("## ➕ Lançar Transação")
     with st.form("form_transacao", clear_on_submit=True):
@@ -301,7 +325,6 @@ elif selected == "Lançar":
                        (tipo, categoria, valor, meio_pagamento, data_trans.strftime('%Y-%m-%d'), obs, usuario))
             st.success("Transação registrada com sucesso!")
 
-# --- MÓDULO 3: METAS ---
 elif selected == "Metas":
     st.markdown("## 🎯 Metas")
     df_metas = run_query("SELECT * FROM metas")
@@ -310,19 +333,16 @@ elif selected == "Metas":
         st.caption(row['descricao'])
         st.write(f"Acumulado: R$ {row['valor_atual']:,.2f} de R$ {row['valor_objetivo']:,.2f}")
 
-# --- MÓDULO 4: BENEFÍCIOS ---
 elif selected == "Benefícios":
     st.markdown("## 🎁 Benefícios")
     df_ben = run_query("SELECT * FROM beneficios")
     st.dataframe(df_ben, use_container_width=True)
 
-# --- MÓDULO 5: HISTÓRICO ---
 elif selected == "Histórico":
     st.markdown("## 📜 Histórico de Transações")
     df_all = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ? ORDER BY data DESC", (str_mes_ano,))
     st.dataframe(df_all, use_container_width=True)
 
-# --- MÓDULO 6: ORÇAMENTO ---
 elif selected == "Orçamento":
     st.markdown("## 📑 Orçamento por Categoria")
     st.info("Planejamento e comparativo por categorias.")
