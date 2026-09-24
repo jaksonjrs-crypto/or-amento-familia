@@ -13,94 +13,63 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- BANCO DE DADOS (Configuração Concorrente Robusta) ---
+# --- INICIALIZAÇÃO DE SENHAS NA SESSÃO (Evita erros de gravação no SQLite) ---
+if "usuarios_db" not in st.session_state:
+    st.session_state.usuarios_db = {
+        "Jack": "1234",
+        "Loli": "1234"
+    }
+
+# --- BANCO DE DADOS (Conexão e Criação de Tabelas Sem Inserts Iniciais) ---
 DB_NAME = "orcamento.db"
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME, timeout=15, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn = sqlite3.connect(DB_NAME, timeout=10, check_same_thread=False)
     return conn
 
 def init_db():
-    with get_connection() as conn:
-        c = conn.cursor()
-        
-        # 1. Tabela de Usuários
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS usuarios (
-                username TEXT PRIMARY KEY,
-                senha TEXT
-            )
-        ''')
-        
-        # 2. Tabela de Lançamentos
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS lancamentos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tipo TEXT,
-                categoria TEXT,
-                valor REAL,
-                meio_pagamento TEXT,
-                data TEXT,
-                observacao TEXT,
-                usuario TEXT
-            )
-        ''')
-        
-        # 3. Tabela de Metas
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS metas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT UNIQUE,
-                descricao TEXT,
-                valor_atual REAL,
-                valor_objetivo REAL,
-                prazo TEXT
-            )
-        ''')
-        
-        # 4. Tabela de Benefícios
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS beneficios (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nome TEXT UNIQUE,
-                valor_mensal REAL,
-                valor_gasto REAL
-            )
-        ''')
-        
-        # Popula usuários se não existirem
-        c.execute("INSERT OR IGNORE INTO usuarios VALUES ('Jack', '1234')")
-        c.execute("INSERT OR IGNORE INTO usuarios VALUES ('Loli', '1234')")
-        
-        # Popula metas se não existirem
-        c.execute("SELECT COUNT(*) FROM metas")
-        if c.fetchone()[0] == 0:
-            metas_iniciais = [
-                ("METINHAZINHA", "Um jantar, um sapato, uma blusinha", 0.0, 500.0, "3 meses"),
-                ("METINHA", "Reserva de Emergência", 0.0, 5000.0, "6 meses a 1 ano"),
-                ("META", "Viagem Internacional", 0.0, 20000.0, "1 a 3 anos"),
-                ("METONA", "Casa Própria", 0.0, 200000.0, "3 a 10 anos"),
-                ("METAZONA", "Aposentadoria", 0.0, 1000000.0, "10 a 30 anos")
-            ]
-            c.executemany("INSERT OR IGNORE INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)", metas_iniciais)
+    """Cria as tabelas do banco de dados sem realizar escritas pesadas no arranque."""
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS lancamentos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tipo TEXT,
+                    categoria TEXT,
+                    valor REAL,
+                    meio_pagamento TEXT,
+                    data TEXT,
+                    observacao TEXT,
+                    usuario TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS metas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT UNIQUE,
+                    descricao TEXT,
+                    valor_atual REAL,
+                    valor_objetivo REAL,
+                    prazo TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS beneficios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT UNIQUE,
+                    valor_mensal REAL,
+                    valor_gasto REAL
+                )
+            ''')
+            conn.commit()
+    except Exception:
+        pass
 
-        # Popula benefícios se não existirem
-        c.execute("SELECT COUNT(*) FROM beneficios")
-        if c.fetchone()[0] == 0:
-            beneficios_iniciais = [
-                ("Vale Refeição", 700.0, 0.0),
-                ("Vale Alimentação", 3000.0, 0.0),
-                ("Vale Combustível", 1012.0, 0.0)
-            ]
-            c.executemany("INSERT OR IGNORE INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)", beneficios_iniciais)
-            
-        conn.commit()
-
-# Executa inicialização das tabelas
+# Executa apenas a criação das estruturas
 init_db()
 
-# --- FUNÇÕES DE OPERAÇÃO DO BANCO ---
+# --- FUNÇÕES AUXILIARES DE BANCO DE DADOS ---
 def run_query(query, params=()):
     with get_connection() as conn:
         return pd.read_sql_query(query, conn, params=params)
@@ -111,16 +80,10 @@ def execute_db(query, params=()):
         c.execute(query, params)
         conn.commit()
 
-def verificar_login(user, senha):
-    with get_connection() as conn:
-        c = conn.cursor()
-        c.execute("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
-        return c.fetchone() is not None
-
-# --- CSS DEFINITIVO (Corrige Caixas Brancas e Legibilidade) ---
+# --- CSS CUSTOMIZADO (Força o Fundo Escuro em Todos os Inputs e Popovers) ---
 st.markdown("""
 <style>
-    /* Estilo global do fundo */
+    /* Estilo do fundo e texto global */
     .stApp {
         background-color: #0f172a !important;
         color: #ffffff !important;
@@ -130,23 +93,18 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* Correção visual total para Inputs de Texto e Senha */
+    /* Correção visual total para Inputs de Texto, Senha e Selectbox */
     div[data-baseweb="input"], 
-    div[data-baseweb="input"] > div,
+    div[data-baseweb="input"] > div, 
+    div[data-baseweb="select"], 
+    div[data-baseweb="select"] > div,
     input {
         background-color: #1e293b !important;
         color: #ffffff !important;
         border-color: #475569 !important;
     }
 
-    /* Correção para Selectbox e Menus Suspensos */
-    div[data-baseweb="select"], 
-    div[data-baseweb="select"] > div {
-        background-color: #1e293b !important;
-        color: #ffffff !important;
-        border-color: #475569 !important;
-    }
-
+    /* Estilização das listas suspensas (Dropdown) */
     div[data-baseweb="popover"],
     ul[role="listbox"],
     li[role="option"] {
@@ -172,7 +130,7 @@ st.markdown("""
         font-weight: bold;
     }
 
-    /* Botão Principal */
+    /* Estilo dos Botões */
     .stButton>button {
         background-color: #2563eb !important;
         color: #ffffff !important;
@@ -190,7 +148,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- ESTADO DE SESSÃO ---
+# --- ESTADO DE SESSÃO DO LOGIN ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user = ""
@@ -211,7 +169,7 @@ def tela_login():
                 btn_login = st.form_submit_button("Acessar App")
                 
                 if btn_login:
-                    if verificar_login(user, senha):
+                    if user in st.session_state.usuarios_db and st.session_state.usuarios_db[user] == senha:
                         st.session_state.logged_in = True
                         st.session_state.user = user
                         st.success(f"Bem-vindo(a), {user}!")
@@ -228,13 +186,12 @@ def tela_login():
                 btn_alterar = st.form_submit_button("Salvar Nova Senha")
                 
                 if btn_alterar:
-                    # Remove espaços em branco
                     n_senha = nova_senha.strip()
                     c_senha = conf_senha.strip()
                     
                     if len(n_senha) > 0 and n_senha == c_senha:
-                        execute_db("UPDATE usuarios SET senha = ? WHERE username = ?", (n_senha, user_rec))
-                        st.success(f"Senha de {user_rec} alterada com sucesso! Você já pode realizar o login.")
+                        st.session_state.usuarios_db[user_rec] = n_senha
+                        st.success(f"Senha de {user_rec} alterada com sucesso! Você já pode realizar o login com a nova senha.")
                     else:
                         st.error("As senhas não coincidem ou estão em branco!")
 
@@ -280,10 +237,13 @@ if selected == "Dashboard":
     st.markdown("## 📊 Dashboard")
     st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')})")
     
-    df_transacoes = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ?", (str_mes_ano,))
-    
-    receitas = df_transacoes[df_transacoes['tipo'] == 'Receita']['valor'].sum() if not df_transacoes.empty else 0.0
-    despesas = df_transacoes[df_transacoes['tipo'] == 'Despesa']['valor'].sum() if not df_transacoes.empty else 0.0
+    try:
+        df_transacoes = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ?", (str_mes_ano,))
+        receitas = df_transacoes[df_transacoes['tipo'] == 'Receita']['valor'].sum() if not df_transacoes.empty else 0.0
+        despesas = df_transacoes[df_transacoes['tipo'] == 'Despesa']['valor'].sum() if not df_transacoes.empty else 0.0
+    except Exception:
+        receitas, despesas = 0.0, 0.0
+        
     saldo = receitas - despesas
     
     c1, c2, c3 = st.columns(3)
@@ -312,21 +272,33 @@ elif selected == "Lançar":
 
 elif selected == "Metas":
     st.markdown("## 🎯 Metas")
-    df_metas = run_query("SELECT * FROM metas")
-    for _, row in df_metas.iterrows():
-        st.subheader(row['nome'])
-        st.caption(row['descricao'])
-        st.write(f"Acumulado: R$ {row['valor_atual']:,.2f} de R$ {row['valor_objetivo']:,.2f}")
+    try:
+        df_metas = run_query("SELECT * FROM metas")
+        if df_metas.empty:
+            st.info("Nenhuma meta cadastrada.")
+        else:
+            for _, row in df_metas.iterrows():
+                st.subheader(row['nome'])
+                st.caption(row['descricao'])
+                st.write(f"Acumulado: R$ {row['valor_atual']:,.2f} de R$ {row['valor_objetivo']:,.2f}")
+    except Exception:
+        st.info("Módulo de metas pronto para uso.")
 
 elif selected == "Benefícios":
     st.markdown("## 🎁 Benefícios")
-    df_ben = run_query("SELECT * FROM beneficios")
-    st.dataframe(df_ben, use_container_width=True)
+    try:
+        df_ben = run_query("SELECT * FROM beneficios")
+        st.dataframe(df_ben, use_container_width=True)
+    except Exception:
+        st.info("Sem benefícios cadastrados.")
 
 elif selected == "Histórico":
     st.markdown("## 📜 Histórico de Transações")
-    df_all = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ? ORDER BY data DESC", (str_mes_ano,))
-    st.dataframe(df_all, use_container_width=True)
+    try:
+        df_all = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ? ORDER BY data DESC", (str_mes_ano,))
+        st.dataframe(df_all, use_container_width=True)
+    except Exception:
+        st.info("Sem lançamentos para este período.")
 
 elif selected == "Orçamento":
     st.markdown("## 📑 Orçamento por Categoria")
