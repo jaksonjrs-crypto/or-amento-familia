@@ -13,36 +13,30 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS PERSONALIZADO (OCULTA BARRA DO STREAMLIT E AJUSTA CABEÇALHO) ---
+# --- CSS PERSONALIZADO ---
 st.markdown("""
 <style>
-    /* 1. OCULTA A BARRA SUPERIOR DO STREAMLIT (Share, GitHub, Menu, etc) */
-    header[data-testid="stHeader"] {
-        display: none !important;
-    }
-    
-    /* 2. OCULTA O RODAPÉ DO STREAMLIT */
-    footer {
-        display: none !important;
-    }
+    /* Oculta barra do Streamlit e rodapé */
+    header[data-testid="stHeader"] { display: none !important; }
+    footer { display: none !important; }
 
-    /* 3. AJUSTA ESPAÇAMENTO DO TOPO NO CELULAR */
+    /* Ajuste de espaçamento no mobile */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 1.5rem !important;
         padding-bottom: 2rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         max-width: 650px;
     }
     
-    /* ESTILO DAS ABAS */
+    /* Estilo das abas */
     button[data-baseweb="tab"] {
         padding-left: 8px !important;
         padding-right: 8px !important;
         font-size: 0.85rem !important;
     }
     
-    /* ESTILO DOS CARDS DE RESUMO */
+    /* Cards de Resumo */
     .card-metric {
         background-color: #1e293b;
         border: 1px solid #334155;
@@ -59,28 +53,37 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DO GIST DA GITHUB ---
+# --- CONFIGURAÇÃO DO GIST DO GITHUB ---
 GIST_ID = st.secrets.get("GIST_ID", "")
 GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
 
+def get_headers():
+    return {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Financas-App-Streamlit"
+    }
+
 def carregar_dados():
     if not GIST_ID or not GITHUB_TOKEN:
-        st.warning("⚠️ Chaves do GitHub Gist não configuradas nos Secrets.")
+        st.error("⚠️ Configurações de GIST_ID ou GITHUB_TOKEN faltando nos Secrets.")
         return pd.DataFrame()
     
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     url = f"https://api.github.com/gists/{GIST_ID}"
-    
     try:
-        res = requests.get(url, headers=headers)
+        res = requests.get(url, headers=get_headers(), timeout=10)
         if res.status_code == 200:
             files = res.json().get("files", {})
             if "dados.json" in files:
-                content = files["dados.json"]["content"]
-                data = json.loads(content)
-                return pd.DataFrame(data)
+                content = files["dados.json"].get("content", "[]")
+                if content.strip():
+                    data = json.loads(content)
+                    return pd.DataFrame(data)
+                return pd.DataFrame()
+        else:
+            st.error(f"Erro ao acessar Gist ({res.status_code}): {res.text}")
     except Exception as e:
-        st.error(f"Erro ao carregar dados: {e}")
+        st.error(f"Erro de conexão com o GitHub: {e}")
     
     return pd.DataFrame()
 
@@ -89,9 +92,7 @@ def salvar_dados(df):
         st.error("⚠️ Não foi possível salvar: GIST_ID ou GITHUB_TOKEN faltando.")
         return False
     
-    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
     url = f"https://api.github.com/gists/{GIST_ID}"
-    
     payload = {
         "files": {
             "dados.json": {
@@ -99,9 +100,43 @@ def salvar_dados(df):
             }
         }
     }
+    try:
+        res = requests.patch(url, headers=get_headers(), json=payload, timeout=10)
+        if res.status_code == 200:
+            return True
+        else:
+            st.error(f"Erro ao salvar no Gist ({res.status_code}): {res.text}")
+            return False
+    except Exception as e:
+        st.error(f"Erro ao conectar com o GitHub: {e}")
+        return False
+
+# --- AUTENTICAÇÃO / LOGIN ---
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = ""
+
+if not st.session_state.autenticado:
+    st.markdown("<h3 style='text-align: center;'>🔐 Finanças J&L</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #94a3b8;'>Faça login para continuar</p>", unsafe_allow_html=True)
     
-    res = requests.patch(url, headers=headers, json=payload)
-    return res.status_code == 200
+    usuarios = st.secrets.get("USERS", {"Jack": "1234", "Loli": "5678"})
+    
+    with st.form("form_login"):
+        user_input = st.selectbox("Usuário", list(usuarios.keys()))
+        pass_input = st.text_input("Senha", type="password")
+        btn_login = st.form_submit_button("Entrar", use_container_width=True, type="primary")
+        
+        if btn_login:
+            if str(usuarios.get(user_input)) == str(pass_input):
+                st.session_state.autenticado = True
+                st.session_state.usuario_logado = user_input
+                st.success("Login realizado com sucesso!")
+                st.rerun()
+            else:
+                st.error("❌ Senha incorreta!")
+    st.stop()
 
 # --- ESTRUTURA DA PLANILHA (GRUPOS E SUBGRUPOS) ---
 ESTRUTURA = {
@@ -143,14 +178,20 @@ ESTRUTURA = {
     "Benefícios": ["Vale Refeição", "Vale Alimentação", "Vale Combustível", "Outros"]
 }
 
-# --- CABEÇALHO EM DESTAQUE ---
-st.markdown("<h3 style='text-align: center; margin-top: 0px; margin-bottom: 8px; color: #f8fafc;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
+# --- CABEÇALHO COM LOGOUT ---
+c_head1, c_head2 = st.columns([3, 1])
+with c_head1:
+    st.markdown(f"<h3 style='margin:0;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
+    st.markdown(f"<span style='color:#94a3b8; font-size:0.85rem;'>Usuário: <b>{st.session_state.usuario_logado}</b></span>", unsafe_allow_html=True)
+with c_head2:
+    if st.button("Sair", use_container_width=True):
+        st.session_state.autenticado = False
+        st.session_state.usuario_logado = ""
+        st.rerun()
 
-usuario_atual = st.selectbox("Usuário Ativo", ["Jack", "Loli"], index=0, label_visibility="collapsed")
+st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
 
-st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
-
-# --- NAVEGAÇÃO POR ABAS HORIZONTAIS NATIVAS ---
+# --- NAVEGAÇÃO POR ABAS HORIZONTAIS ---
 tab_lancar, tab_resumo, tab_historico, tab_gerenciar = st.tabs([
     "➕ Novo", "📊 Resumo", "📜 Histórico", "⚙️ Editar"
 ])
@@ -199,7 +240,7 @@ with tab_lancar:
                 "subgrupo": subgrupo_selecionado,
                 "valor": float(valor),
                 "meio_pagamento": meio_pagamento,
-                "usuario": usuario_atual,
+                "usuario": st.session_state.usuario_logado,
                 "observacao": observacao
             }
             
@@ -209,7 +250,7 @@ with tab_lancar:
             if salvar_dados(df_novo):
                 st.success(f"✅ Lançamento de R$ {valor:,.2f} salvo com sucesso!")
             else:
-                st.error("❌ Erro ao salvar dados no Gist.")
+                st.error("❌ Falha ao salvar no Gist. Verifique a mensagem acima.")
 
 # ==========================================
 # 2. ABA: RESUMO
