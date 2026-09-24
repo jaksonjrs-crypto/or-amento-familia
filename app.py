@@ -13,35 +13,26 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS PERSONALIZADO (FORÇA O MENU HORIZONTAL NO MOBILE) ---
+# --- CSS PARA AJUSTE DE ESPAÇAMENTO E MOBILE ---
 st.markdown("""
 <style>
-    /* Reduz as margens superiores para otimizar espaço */
+    /* Ajusta espaçamento do topo para não cortar no celular */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 1.5rem !important;
         padding-bottom: 2rem !important;
-        max-width: 680px;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+        max-width: 650px;
     }
     
-    /* FORÇA AS COLUNAS A FICAREM LADO A LADO NO CELULAR (MANTÉM O MENU HORIZONTAL) */
-    div[data-testid="stHorizontalBlock"] {
-        flex-direction: row !important;
-        gap: 0.25rem !important;
-        align-items: center !important;
+    /* Garante que o texto das abas não quebre em várias linhas */
+    button[data-baseweb="tab"] {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+        font-size: 0.85rem !important;
     }
     
-    div[data-testid="column"] {
-        min-width: 0px !important;
-        flex: 1 1 0% !important;
-    }
-
-    /* Estilo dos botões para caberem no celular */
-    div[data-testid="column"] button {
-        padding: 4px 2px !important;
-        font-size: 0.8rem !important;
-    }
-
-    /* Cards Métricos */
+    /* Estilo dos Cards do Resumo */
     .card-metric {
         background-color: #1e293b;
         border: 1px solid #334155;
@@ -142,45 +133,24 @@ ESTRUTURA = {
     "Benefícios": ["Vale Refeição", "Vale Alimentação", "Vale Combustível", "Outros"]
 }
 
-# --- ESTADO DE NAVEGAÇÃO ---
-if "page" not in st.session_state:
-    st.session_state.page = "Lançar"
+# --- CABEÇALHO LIMPO E COMPACTO ---
+col_head1, col_head2 = st.columns([2, 1])
+with col_head1:
+    st.markdown("<h3 style='margin:0; padding:0; font-size:1.4rem;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
+with col_head2:
+    usuario_atual = st.selectbox("Usuário", ["Jack", "Loli"], index=0, label_visibility="collapsed")
 
-if "usuario" not in st.session_state:
-    st.session_state.usuario = "Jack"
+st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
 
-# --- CABEÇALHO COMPACTO ---
-col_u1, col_u2 = st.columns([3, 1])
-with col_u1:
-    st.markdown("<h4 style='margin:0; padding-top:4px;'>💳 Finanças J&L</h4>", unsafe_allow_html=True)
-with col_u2:
-    st.session_state.usuario = st.selectbox("Usuário", ["Jack", "Loli"], index=0 if st.session_state.usuario == "Jack" else 1, label_visibility="collapsed")
-
-# --- MENU FIXO HORIZONTAL LADO A LADO ---
-c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
-with c_nav1:
-    if st.button("➕ Novo", use_container_width=True, type="primary" if st.session_state.page == "Lançar" else "secondary"):
-        st.session_state.page = "Lançar"
-        st.rerun()
-with c_nav2:
-    if st.button("📊 Resumo", use_container_width=True, type="primary" if st.session_state.page == "Resumo" else "secondary"):
-        st.session_state.page = "Resumo"
-        st.rerun()
-with c_nav3:
-    if st.button("📜 Histórico", use_container_width=True, type="primary" if st.session_state.page == "Histórico" else "secondary"):
-        st.session_state.page = "Histórico"
-        st.rerun()
-with c_nav4:
-    if st.button("⚙️ Editar", use_container_width=True, type="primary" if st.session_state.page == "Gerenciar" else "secondary"):
-        st.session_state.page = "Gerenciar"
-        st.rerun()
-
-st.markdown("---")
+# --- NAVEGAÇÃO POR ABAS HORIZONTAIS NATIVAS (NÃO EMPILHA NO MOBILE) ---
+tab_lancar, tab_resumo, tab_historico, tab_gerenciar = st.tabs([
+    "➕ Novo", "📊 Resumo", "📜 Histórico", "⚙️ Editar"
+])
 
 # ==========================================
-# 1. TELA: LANÇAR
+# 1. ABA: LANÇAR
 # ==========================================
-if st.session_state.page == "Lançar":
+with tab_lancar:
     st.markdown("##### ➕ Novo Lançamento")
     
     tipo = st.radio("Tipo de Operação", ["Despesa", "Receita", "Boleto Pessoal (Investimento)", "Benefício"], horizontal=True)
@@ -221,7 +191,7 @@ if st.session_state.page == "Lançar":
                 "subgrupo": subgrupo_selecionado,
                 "valor": float(valor),
                 "meio_pagamento": meio_pagamento,
-                "usuario": st.session_state.usuario,
+                "usuario": usuario_atual,
                 "observacao": observacao
             }
             
@@ -234,9 +204,9 @@ if st.session_state.page == "Lançar":
                 st.error("❌ Erro ao salvar dados no Gist.")
 
 # ==========================================
-# 2. TELA: RESUMO
+# 2. ABA: RESUMO
 # ==========================================
-elif st.session_state.page == "Resumo":
+with tab_resumo:
     st.markdown("##### 📊 Resumo Mensal")
     df = carregar_dados()
     
@@ -269,9 +239,9 @@ elif st.session_state.page == "Resumo":
         st.info("Nenhum dado encontrado no Gist.")
 
 # ==========================================
-# 3. TELA: HISTÓRICO & EXPORTAÇÃO
+# 3. ABA: HISTÓRICO & EXPORTAÇÃO
 # ==========================================
-elif st.session_state.page == "Histórico":
+with tab_historico:
     st.markdown("##### 📜 Histórico e Exportação")
     df = carregar_dados()
     
@@ -313,9 +283,9 @@ elif st.session_state.page == "Histórico":
         st.info("Nenhum dado salvo até o momento.")
 
 # ==========================================
-# 4. TELA: GERENCIAR (EDITAR / DELETAR)
+# 4. ABA: GERENCIAR (EDITAR / DELETAR)
 # ==========================================
-elif st.session_state.page == "Gerenciar":
+with tab_gerenciar:
     st.markdown("##### ⚙️ Editar ou Excluir Lançamentos")
     df = carregar_dados()
     
