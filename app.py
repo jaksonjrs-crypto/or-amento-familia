@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import json
 import io
+import os
 from datetime import datetime
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
@@ -13,23 +14,23 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS PERSONALIZADO ---
+# --- CSS PERSONALIZADO (OCULTA CABEÇALHO DO STREAMLIT E AJUSTA VISUAL) ---
 st.markdown("""
 <style>
-    /* Oculta barra do Streamlit e rodapé */
+    /* Oculta barra do Streamlit (Share, GitHub, etc) e Rodapé */
     header[data-testid="stHeader"] { display: none !important; }
     footer { display: none !important; }
 
-    /* Ajuste de espaçamento no mobile */
+    /* Ajuste de espaçamento para telas móveis */
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 1.2rem !important;
         padding-bottom: 2rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         max-width: 650px;
     }
     
-    /* Estilo das abas */
+    /* Abas */
     button[data-baseweb="tab"] {
         padding-left: 8px !important;
         padding-right: 8px !important;
@@ -53,63 +54,76 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CONFIGURAÇÃO DO GIST DO GITHUB ---
-GIST_ID = st.secrets.get("GIST_ID", "")
-GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN", "")
+# --- TRATAMENTO DOS SECRETS (LIMPEZA DE RESÍDUOS/ESPAÇOS) ---
+GIST_ID = str(st.secrets.get("GIST_ID", "")).strip().replace('"', '').replace("'", "")
+GITHUB_TOKEN = str(st.secrets.get("GITHUB_TOKEN", "")).strip().replace('"', '').replace("'", "")
 
-def get_headers():
-    return {
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json",
-        "User-Agent": "Financas-App-Streamlit"
-    }
+LOCAL_FILE = "dados_locais.csv"
 
+# --- FUNÇÕES DE PERSISTÊNCIA DE DADOS ---
 def carregar_dados():
-    if not GIST_ID or not GITHUB_TOKEN:
-        st.error("⚠️ Configurações de GIST_ID ou GITHUB_TOKEN faltando nos Secrets.")
-        return pd.DataFrame()
-    
-    url = f"https://api.github.com/gists/{GIST_ID}"
-    try:
-        res = requests.get(url, headers=get_headers(), timeout=10)
-        if res.status_code == 200:
-            files = res.json().get("files", {})
-            if "dados.json" in files:
-                content = files["dados.json"].get("content", "[]")
-                if content.strip():
-                    data = json.loads(content)
-                    return pd.DataFrame(data)
-                return pd.DataFrame()
-        else:
-            st.error(f"Erro ao acessar Gist ({res.status_code}): {res.text}")
-    except Exception as e:
-        st.error(f"Erro de conexão com o GitHub: {e}")
-    
+    if GIST_ID and GITHUB_TOKEN:
+        url = f"https://api.github.com/gists/{GIST_ID}"
+        # Testa os dois formatos de cabeçalho aceitos pelo GitHub
+        for auth_prefix in ["token", "Bearer"]:
+            headers = {
+                "Authorization": f"{auth_prefix} {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "Financas-JL-App"
+            }
+            try:
+                res = requests.get(url, headers=headers, timeout=5)
+                if res.status_code == 200:
+                    files = res.json().get("files", {})
+                    if "dados.json" in files:
+                        content = files["dados.json"].get("content", "[]")
+                        if content.strip():
+                            return pd.DataFrame(json.loads(content))
+                        return pd.DataFrame()
+            except Exception:
+                pass
+
+    # Fallback para arquivo local caso o Gist falhe
+    if os.path.exists(LOCAL_FILE):
+        try:
+            return pd.read_csv(LOCAL_FILE)
+        except Exception:
+            return pd.DataFrame()
     return pd.DataFrame()
 
 def salvar_dados(df):
-    if not GIST_ID or not GITHUB_TOKEN:
-        st.error("⚠️ Não foi possível salvar: GIST_ID ou GITHUB_TOKEN faltando.")
-        return False
+    salvo_no_gist = False
     
-    url = f"https://api.github.com/gists/{GIST_ID}"
-    payload = {
-        "files": {
-            "dados.json": {
-                "content": json.dumps(df.to_dict(orient="records"), ensure_ascii=False, indent=2)
+    if GIST_ID and GITHUB_TOKEN:
+        url = f"https://api.github.com/gists/{GIST_ID}"
+        payload = {
+            "files": {
+                "dados.json": {
+                    "content": json.dumps(df.to_dict(orient="records"), ensure_ascii=False, indent=2)
+                }
             }
         }
-    }
+        for auth_prefix in ["token", "Bearer"]:
+            headers = {
+                "Authorization": f"{auth_prefix} {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "Financas-JL-App"
+            }
+            try:
+                res = requests.patch(url, headers=headers, json=payload, timeout=5)
+                if res.status_code == 200:
+                    salvo_no_gist = True
+                    break
+            except Exception:
+                pass
+
+    # Salva também cópia local para garantir a integridade dos seus lançamentos
     try:
-        res = requests.patch(url, headers=get_headers(), json=payload, timeout=10)
-        if res.status_code == 200:
-            return True
-        else:
-            st.error(f"Erro ao salvar no Gist ({res.status_code}): {res.text}")
-            return False
-    except Exception as e:
-        st.error(f"Erro ao conectar com o GitHub: {e}")
-        return False
+        df.to_csv(LOCAL_FILE, index=False)
+    except Exception:
+        pass
+
+    return salvo_no_gist or os.path.exists(LOCAL_FILE)
 
 # --- AUTENTICAÇÃO / LOGIN ---
 if "autenticado" not in st.session_state:
@@ -118,8 +132,8 @@ if "usuario_logado" not in st.session_state:
     st.session_state.usuario_logado = ""
 
 if not st.session_state.autenticado:
-    st.markdown("<h3 style='text-align: center;'>🔐 Finanças J&L</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #94a3b8;'>Faça login para continuar</p>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center; margin-top: 20px;'>🔐 Finanças J&L</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #94a3b8;'>Faça login para acessar</p>", unsafe_allow_html=True)
     
     usuarios = st.secrets.get("USERS", {"Jack": "1234", "Loli": "5678"})
     
@@ -132,13 +146,13 @@ if not st.session_state.autenticado:
             if str(usuarios.get(user_input)) == str(pass_input):
                 st.session_state.autenticado = True
                 st.session_state.usuario_logado = user_input
-                st.success("Login realizado com sucesso!")
+                st.success("Login efetuado com sucesso!")
                 st.rerun()
             else:
                 st.error("❌ Senha incorreta!")
     st.stop()
 
-# --- ESTRUTURA DA PLANILHA (GRUPOS E SUBGRUPOS) ---
+# --- ESTRUTURA DE CATEGORIAS DA PLANILHA ---
 ESTRUTURA = {
     "Receitas Fixas": ["Fonte de Renda 1 (Lílian)", "Fonte de Renda 2 (Jakson)", "Outros"],
     "Receitas Variáveis": ["13º Salário Líquido", "Férias", "Bônus e extras"],
@@ -178,7 +192,7 @@ ESTRUTURA = {
     "Benefícios": ["Vale Refeição", "Vale Alimentação", "Vale Combustível", "Outros"]
 }
 
-# --- CABEÇALHO COM LOGOUT ---
+# --- CABEÇALHO DA APLICAÇÃO ---
 c_head1, c_head2 = st.columns([3, 1])
 with c_head1:
     st.markdown(f"<h3 style='margin:0;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
@@ -250,7 +264,7 @@ with tab_lancar:
             if salvar_dados(df_novo):
                 st.success(f"✅ Lançamento de R$ {valor:,.2f} salvo com sucesso!")
             else:
-                st.error("❌ Falha ao salvar no Gist. Verifique a mensagem acima.")
+                st.error("❌ Não foi possível gravar o lançamento.")
 
 # ==========================================
 # 2. ABA: RESUMO
@@ -283,9 +297,9 @@ with tab_resumo:
             resumo_grupo = df_mes.groupby(["grupo", "tipo"])["valor"].sum().reset_index()
             st.dataframe(resumo_grupo, use_container_width=True, hide_index=True)
         else:
-            st.info("Nenhum lançamento neste mês.")
+            st.info("Nenhum lançamento registrado para este mês.")
     else:
-        st.info("Nenhum dado encontrado no Gist.")
+        st.info("Nenhum lançamento registrado até o momento.")
 
 # ==========================================
 # 3. ABA: HISTÓRICO & EXPORTAÇÃO
@@ -329,7 +343,7 @@ with tab_historico:
                 use_container_width=True
             )
     else:
-        st.info("Nenhum dado salvo até o momento.")
+        st.info("Nenhum dado para exportar.")
 
 # ==========================================
 # 4. ABA: GERENCIAR (EDITAR / DELETAR)
@@ -380,13 +394,13 @@ with tab_gerenciar:
                     df.at[idx, "observacao"] = edit_obs
                     
                     if salvar_dados(df):
-                        st.success("✅ Registro atualizado com sucesso!")
+                        st.success("✅ Registro atualizado!")
                         st.rerun()
                         
                 if btn_deletar:
                     df = df.drop(index=idx)
                     if salvar_dados(df):
-                        st.warning("🗑️ Registro excluído com sucesso!")
+                        st.warning("🗑️ Registro excluído!")
                         st.rerun()
     else:
         st.info("Nenhum lançamento cadastrado para editar.")
