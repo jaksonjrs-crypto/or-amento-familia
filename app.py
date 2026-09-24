@@ -1,221 +1,518 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
+import sqlite3
 import plotly.express as px
 from datetime import datetime
-import hashlib
-# Nova biblioteca para o menu atraente
-from streamlit_option_menu import option_menu 
+from streamlit_option_menu import option_menu
 
-# --- CONFIGURAÇÕES DA PÁGINA ---
-st.set_page_config(page_title="Orçamento Doméstico - Jack & Loli", page_icon="💰", layout="wide")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(
+    page_title="Jack & Loli - Orçamento Doméstico",
+    page_icon="💰",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
-# --- FUNÇÕES DE SEGURANÇA (LOGIN) ---
-def fazer_hash(senha):
-    return hashlib.sha256(str.encode(senha)).hexdigest()
+# --- CSS CUSTOMIZADO (Visual Dark elegante idêntico às imagens) ---
+st.markdown("""
+<style>
+    /* Estilo global dark */
+    .stApp {
+        background-color: #0b1120;
+        color: #f1f5f9;
+    }
+    
+    /* Ocultar elementos desnecessários */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Cards Customizados */
+    .card-metric {
+        background-color: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .card-title {
+        color: #94a3b8;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .card-value {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-top: 4px;
+    }
+    .val-positive { color: #38bdf8; }
+    .val-negative { color: #f87171; }
+    .val-neutral { color: #60a5fa; }
+    
+    /* Barras de progresso da Regra 55/5/10/30 */
+    .rule-container {
+        background-color: #1e293b;
+        border-radius: 12px;
+        padding: 18px;
+        border: 1px solid #334155;
+        margin-bottom: 20px;
+    }
+    
+    /* Ajuste de botões */
+    .stButton>button {
+        border-radius: 8px;
+        background-color: #2563eb;
+        color: white;
+        border: none;
+        font-weight: 600;
+    }
+    .stButton>button:hover {
+        background-color: #1d4ed8;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def criar_tabela_usuarios():
-    conn = sqlite3.connect("orcamento.db")
+# --- BANCO DE DADOS (SQLite) ---
+DB_NAME = "orcamento.db"
+
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            usuario TEXT PRIMARY KEY,
-            nome TEXT,
-            senha TEXT
-        )
-    """)
-    c.execute("INSERT OR IGNORE INTO usuarios VALUES ('jack', 'Jakson', ?)", (fazer_hash("jack123"),))
-    c.execute("INSERT OR IGNORE INTO usuarios VALUES ('loli', 'Lílian', ?)", (fazer_hash("loli123"),))
-    conn.commit()
-    conn.close()
-
-def verificar_login(usuario, senha):
-    conn = sqlite3.connect("orcamento.db")
-    c = conn.cursor()
-    c.execute("SELECT nome FROM usuarios WHERE usuario = ? AND senha = ?", (usuario, fazer_hash(senha)))
-    resultado = c.fetchone()
-    conn.close()
-    return resultado if resultado else None
-
-# --- BANCO DE DADOS DOS LANÇAMENTOS ---
-def criar_tabela_lancamentos():
-    conn = sqlite3.connect("orcamento.db")
-    c = conn.cursor()
-    c.execute("""
+    
+    # Tabela de Lançamentos
+    c.execute('''
         CREATE TABLE IF NOT EXISTS lancamentos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            data TEXT,
             tipo TEXT,
             categoria TEXT,
-            descricao TEXT,
             valor REAL,
             meio_pagamento TEXT,
+            data TEXT,
+            observacao TEXT,
             usuario TEXT
         )
-    """)
+    ''')
+    
+    # Tabela de Metas
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS metas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT UNIQUE,
+            descricao TEXT,
+            valor_atual REAL,
+            valor_objetivo REAL,
+            prazo TEXT
+        )
+    ''')
+    
+    # Tabela de Benefícios
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS beneficios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT UNIQUE,
+            valor_mensal REAL,
+            valor_gasto REAL
+        )
+    ''')
+    
+    # Inserção de dados iniciais para Metas (se vazio)
+    c.execute("SELECT COUNT(*) FROM metas")
+    if c.fetchone()[0] == 0:
+        metas_iniciais = [
+            ("METINHAZINHA", "Um jantar, um sapato, uma blusinha", 0.0, 500.0, "3 meses"),
+            ("METINHA", "Reserva de Emergência", 0.0, 5000.0, "6 meses a 1 ano"),
+            ("META", "Viagem Internacional", 0.0, 20000.0, "1 a 3 anos"),
+            ("METONA", "Casa Própria", 0.0, 200000.0, "3 a 10 anos"),
+            ("METAZONA", "Aposentadoria", 0.0, 1000000.0, "10 a 30 anos")
+        ]
+        c.executemany("INSERT INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)", metas_iniciais)
+        
+    # Inserção de dados iniciais para Benefícios (se vazio)
+    c.execute("SELECT COUNT(*) FROM beneficios")
+    if c.fetchone()[0] == 0:
+        beneficios_iniciais = [
+            ("Vale Refeição", 700.0, 0.0),
+            ("Vale Alimentação", 3000.0, 0.0),
+            ("Vale Combustível", 1012.0, 0.0)
+        ]
+        c.executemany("INSERT INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)", beneficios_iniciais)
+        
     conn.commit()
     conn.close()
 
-def inserir_lancamento(data, tipo, categoria, descricao, valor, meio_pagamento, usuario):
-    conn = sqlite3.connect("orcamento.db")
-    c = conn.cursor()
-    c.execute("INSERT INTO lancamentos (data, tipo, categoria, descricao, valor, meio_pagamento, usuario) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              (data, tipo, categoria, descricao, valor, meio_pagamento, usuario))
-    conn.commit()
-    conn.close()
+init_db()
 
-def obter_dados():
-    conn = sqlite3.connect("orcamento.db")
-    df = pd.read_sql_query("SELECT * FROM lancamentos", conn)
+# --- FUNÇÕES AUXILIARES DE BANCO ---
+def run_query(query, params=()):
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
 
-# --- INICIALIZAÇÃO DO APP ---
-criar_tabela_usuarios()
-criar_tabela_lancamentos()
+def execute_db(query, params=()):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(query, params)
+    conn.commit()
+    conn.close()
 
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
-    st.session_state["nome_usuario"] = ""
-    st.session_state["username"] = ""
+# --- BARRA DE NAVEGAÇÃO SUPERIOR ---
+selected = option_menu(
+    menu_title=None,
+    options=["Dashboard", "Lançar", "Metas", "Benefícios", "Histórico", "Orçamento"],
+    icons=["pie-chart-fill", "plus-circle-fill", "target", "gift-fill", "clock-history", "calculator-fill"],
+    default_index=0,
+    orientation="horizontal",
+    styles={
+        "container": {"padding": "0!important", "background-color": "#0f172a", "border-bottom": "1px solid #1e293b"},
+        "icon": {"color": "#60a5fa", "font-size": "15px"},
+        "nav-link": {
+            "font-size": "14px",
+            "text-align": "center",
+            "margin": "4px",
+            "color": "#94a3b8",
+            "--hover-color": "#1e293b"
+        },
+        "nav-link-selected": {"background-color": "#2563eb", "color": "white", "font-weight": "600"},
+    }
+)
 
-# --- TELA DE LOGIN ---
-if not st.session_state["logado"]:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    col_login_1, col_login_2, col_login_3 = st.columns([1, 1.5, 1])
+# --- CABEÇALHO COM SELEÇÃO DE PERÍODO ---
+col_head1, col_head2 = st.columns([3, 1])
+with col_head1:
+    st.markdown("### 🔄 **Jack & Loli**")
+with col_head2:
+    mes_ano = st.date_input("Filtro de Período", datetime.today(), label_visibility="collapsed")
+    str_mes_ano = mes_ano.strftime("%Y-%m")
+
+# --- MÓDULO 1: DASHBOARD ---
+if selected == "Dashboard":
+    st.markdown("## 📊 Dashboard")
+    st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')}) — Olá, Jack & Loli!")
     
-    with col_login_2:
-        st.markdown(
-            """
-            <div style='background-color: #1E1E1E; padding: 30px; border-radius: 15px; border: 1px solid #4A4A4A;'>
-                <h2 style='text-align: center; color: #FFFFFF; margin-bottom: 25px;'>🔐 Finanças Jack & Loli</h2>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
-        with st.form("Formulário de Login"):
-            usuario_input = st.text_input("Usuário").strip().lower()
-            senha_input = st.text_input("Senha", type="password")
-            botao_login = st.form_submit_button("Entrar no Painel", use_container_width=True)
+    # Busca de dados do mês
+    df_transacoes = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ?", (str_mes_ano,))
+    
+    receitas = df_transacoes[df_transacoes['tipo'] == 'Receita']['valor'].sum() if not df_transacoes.empty else 0.0
+    despesas = df_transacoes[df_transacoes['tipo'] == 'Despesa']['valor'].sum() if not df_transacoes.empty else 0.0
+    saldo = receitas - despesas
+    renda_base = receitas if receitas > 0 else 1.0 # Evita divisão por zero
+    
+    # Top Cards
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown(f"""
+        <div class="card-metric">
+            <div class="card-title">Receitas</div>
+            <div class="card-value val-positive">R$ {receitas:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c2:
+        st.markdown(f"""
+        <div class="card-metric">
+            <div class="card-title">Despesas</div>
+            <div class="card-value val-negative">R$ {despesas:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c3:
+        cor_s = "val-positive" if saldo >= 0 else "val-negative"
+        st.markdown(f"""
+        <div class="card-metric">
+            <div class="card-title">Saldo</div>
+            <div class="card-value {cor_s}">R$ {saldo:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c4:
+        st.markdown(f"""
+        <div class="card-metric">
+            <div class="card-title">Renda Base</div>
+            <div class="card-value val-neutral">R$ {receitas:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Regra Orçamentária (55/5/10/30)
+    st.markdown("---")
+    st.markdown("### 🎯 Regra Orçamentária (55/5/10/30)")
+    
+    metas_regra = {
+        "Essenciais (55%)": (0.55 * renda_base, df_transacoes[df_transacoes['categoria'].isin(['Habitação', 'Alimentação', 'Saúde', 'Transporte'])]['valor'].sum() if not df_transacoes.empty else 0),
+        "Educação (5%)": (0.05 * renda_base, df_transacoes[df_transacoes['categoria'] == 'Educação']['valor'].sum() if not df_transacoes.empty else 0),
+        "Livres (10%)": (0.10 * renda_base, df_transacoes[df_transacoes['categoria'].isin(['Lazer', 'Despesas Pessoais'])]['valor'].sum() if not df_transacoes.empty else 0),
+        "Metas/Investimentos (30%)": (0.30 * renda_base, df_transacoes[df_transacoes['categoria'] == 'Investimentos']['valor'].sum() if not df_transacoes.empty else 0)
+    }
+    
+    with st.container():
+        for nome, (limite, gasto) in metas_regra.items():
+            pct = min(gasto / limite if limite > 0 else 0.0, 1.0)
+            col_r1, col_r2 = st.columns([3, 1])
+            with col_r1:
+                st.write(f"**{nome}**")
+                st.progress(pct)
+            with col_r2:
+                st.write(f"R$ {gasto:,.2f} / R$ {limite:,.2f}")
+
+    # Gráficos de Despesas e Metas
+    st.markdown("---")
+    g_col1, g_col2 = st.columns(2)
+    
+    with g_col1:
+        st.markdown("### 🍰 Despesas por Categoria")
+        if not df_transacoes.empty and despesas > 0:
+            df_desp = df_transacoes[df_transacoes['tipo'] == 'Despesa'].groupby('categoria')['valor'].sum().reset_index()
             
-            if botao_login:
-                nome_confirmado = verificar_login(usuario_input, senha_input)
-                if nome_confirmado:
-                    st.session_state["logado"] = True
-                    st.session_state["nome_usuario"] = nome_confirmado
-                    st.session_state["username"] = usuario_input
-                    st.rerun()
-                else:
-                    st.error("Usuário ou senha incorretos.")
-
-# --- APP AUTENTICADO ---
-else:
-    # --- MENU DE NAVEGAÇÃO ATRAENTE (SIDEBAR) ---
-    with st.sidebar:
-        st.markdown(f"<h3 style='text-align: center; color: #2ecc71;'>👋 Olá, {st.session_state['nome_usuario']}!</h3>", unsafe_allow_html=True)
-        st.markdown("---")
-        
-        menu = option_menu(
-            menu_title="Navegação",
-            options=["Dashboard", "Novo Lançamento", "Histórico"],
-            icons=["chart-pie", "pencil-square", "table"],
-            menu_icon="cast",
-            default_index=0,
-            styles={
-                "container": {"padding": "5px!", "background-color": "#0E1117"},
-                "icon": {"color": "#2ecc71", "font-size": "20px"}, 
-                "nav-link": {"font-size": "16px", "text-align": "left", "margin":"5px", "--hover-color": "#262730"},
-                "nav-link-selected": {"background-color": "#2ecc71", "color": "black", "font-weight": "bold"},
-            }
-        )
-        
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button("🚪 Sair do Sistema", use_container_width=True):
-            st.session_state["logado"] = False
-            st.session_state["nome_usuario"] = ""
-            st.session_state["username"] = ""
-            st.rerun()
-
-    # --- PÁGINA 1: DASHBOARD ---
-    if menu == "Dashboard":
-        st.markdown("<h2 style='color: #2ecc71;'>📊 Painel de Controle Orçamentário</h2>", unsafe_allow_html=True)
-        df = obter_dados()
-        
-        if df.empty:
-            st.info("Nenhum dado cadastrado ainda. Vá em 'Novo Lançamento' para começar!")
+            # Paleta de cores para despesas em tons avermelhados/rosados elegantes (conforme solicitado)
+            red_shades = ['#e11d48', '#f43f5e', '#fb7185', '#fda4af', '#9f1239', '#881337', '#be123c']
+            
+            fig = px.pie(
+                df_desp, 
+                values='valor', 
+                names='categoria', 
+                hole=0.4,
+                color_discrete_sequence=red_shades
+            )
+            fig.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#f1f5f9'),
+                margin=dict(t=20, b=20, l=10, r=10)
+            )
+            st.plotly_chart(fig, use_container_width=True)
         else:
-            df['data'] = pd.to_datetime(df['data'])
-            df['Mes_Ano'] = df['data'].dt.strftime('%m/%Y')
+            st.info("Nenhuma despesa registrada neste período.")
             
-            col_titulo, col_filtro = st.columns()
-            with col_filtro:
-                meses_disponiveis = sorted(df['Mes_Ano'].unique(), reverse=True)
-                mes_selecionado = st.selectbox("📅 Selecione o Mês de Análise", meses_disponiveis)
-            
-            df_mes = df[df['Mes_Ano'] == mes_selecionado]
-            
-            receitas = df_mes[df_mes['tipo'] == 'Receita']['valor'].sum()
-            despesas = df_mes[df_mes['tipo'] == 'Despesa']['valor'].sum()
-            saldo = receitas - despesas
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("🟢 Renda Total do Mês", f"R$ {receitas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            col2.metric("🔴 Despesas Totais", f"R$ {despesas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            col3.metric("🔵 Saldo Final (Sobra)", f"R$ {saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 
-                        delta=f"R$ {saldo:,.2f}", delta_color="normal" if saldo >= 0 else "inverse")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            
-            col_graf1, col_graf2 = st.columns(2)
-            
-            with col_graf1:
-                st.markdown("<h4>🍕 Distribuição de Despesas</h4>", unsafe_allow_html=True)
-                df_despesas = df_mes[df_mes['tipo'] == 'Despesa']
-                if not df_despesas.empty:
-                    fig_pizza = px.pie(df_despesas, values='valor', names='categoria', hole=0.5,
-                                       color_discrete_sequence=px.colors.qualitative.Safe)
-                    fig_pizza.update_layout(margin=dict(t=20, b=20, l=20, r=20))
-                    st.plotly_chart(fig_pizza, use_container_width=True)
-                else:
-                    st.write("Sem despesas para este mês.")
-                    
-            with col_graf2:
-                st.markdown("<h4>📈 Evolução Mensal</h4>", unsafe_allow_html=True)
-                df_historico = df.groupby(['Mes_Ano', 'tipo'])['valor'].sum().unstack().fillna(0).reset_index()
-                fig_linha = px.line(df_historico, x='Mes_Ano', y=['Receita', 'Despesa'], markers=True,
-                                    labels={'value': 'Valor (R$)', 'Mes_Ano': 'Mês/Ano'},
-                                    color_discrete_map={'Receita': '#2ecc71', 'Despesa': '#e74c3c'})
-                fig_linha.update_layout(margin=dict(t=20, b=20, l=20, r=20))
-                st.plotly_chart(fig_linha, use_container_width=True)
+    with g_col2:
+        st.markdown("### 📈 Progresso das Metas")
+        df_metas = run_query("SELECT * FROM metas")
+        if not df_metas.empty:
+            df_metas['Progresso (%)'] = (df_metas['valor_atual'] / df_metas['valor_objetivo']) * 100
+            fig_metas = px.bar(
+                df_metas,
+                x='Progresso (%)',
+                y='nome',
+                orientation='h',
+                text=df_metas['Progresso (%)'].apply(lambda x: f"{x:.1f}%"),
+                color_discrete_sequence=['#38bdf8']
+            )
+            fig_metas.update_layout(
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#f1f5f9'),
+                xaxis=dict(range=[0, 100], showgrid=False),
+                yaxis=dict(title=None),
+                margin=dict(t=20, b=20, l=10, r=10)
+            )
+            st.plotly_chart(fig_metas, use_container_width=True)
 
-    # --- PÁGINA 2: NOVO LANÇAMENTO ---
-    elif menu == "Novo Lançamento":
-        st.markdown("<h2 style='color: #2ecc71;'>📝 Adicionar Lançamento</h2>", unsafe_allow_html=True)
+# --- MÓDULO 2: LANÇAR TRANSAÇÃO ---
+elif selected == "Lançar":
+    st.markdown("## ➕ Lançar Transação")
+    st.caption("Registre novas receitas e despesas com praticidade.")
+    
+    with st.form("form_transacao", clear_on_submit=True):
+        tipo = st.radio("Tipo de Transação", ["Despesa", "Receita"], horizontal=True)
         
-        with st.form("Formulário de Cadastro"):
-            col1, col2 = st.columns(2)
-            with col1:
-                data = st.date_input("Data do Fato", datetime.now())
-                tipo = st.selectbox("Tipo", ["Despesa", "Receita"])
-                
-                if tipo == "Despesa":
-                    categoria = st.selectbox("Categoria", ["HABITAÇÃO", "DIVÍDAS", "TRANSPORTE", "DESPESAS PESSOAIS", "SAÚDE", "LAZER", "EDUCAÇÃO", "OUTROS"])
-                else:
-                    categoria = st.selectbox("Categoria", ["Fonte de Renda Fixa", "Receitas Variáveis/Extras", "Benefícios"])
-                    
-            with col2:
-                descricao = st.text_input("Descrição (Ex: Conta de Luz, Supermercado, etc.)")
-                valor = st.number_input("Valor (R$)", min_value=0.01, step=0.01)
-                meio_pagamento = st.selectbox("Meio de Movimentação", ["Pix", "Transferência Bancária", "Cartão de Crédito", "Cartão de Débito", "Dinheiro", "Vale/Benefício", "Débito Automático"])
-                
-            st.markdown("<br>", unsafe_allow_html=True)
-            botao_salvar = st.form_submit_button("💾 Salvar Registro", use_container_width=True)
+        c_cat, c_val = st.columns(2)
+        with c_cat:
+            categoria = st.selectbox("Categoria", [
+                "Habitação", "Alimentação", "Saúde", "Transporte", 
+                "Educação", "Lazer", "Despesas Pessoais", "Dívidas", 
+                "Investimentos", "Receita Fixa", "Outros"
+            ])
+        with c_val:
+            valor = st.number_input("Valor (R$)", min_value=0.01, step=10.0, format="%.2f")
             
-            if botao_salvar:
-                inserir_lancamento(data.strftime('%Y-%m-%d'), tipo, categoria, descricao, valor, meio_pagamento, st.session_state["nome_usuario"])
-                st.success("Registro adicionado com sucesso ao banco de dados!")
+        c_meio, c_data = st.columns(2)
+        with c_meio:
+            meio_pagamento = st.selectbox("Meio de Pagamento", [
+                "PIX", "Cartão de Crédito", "Débito Automático", 
+                "Transferência Bancária", "Dinheiro", "Benefício"
+            ])
+        with c_data:
+            data_trans = st.date_input("Data", datetime.today())
+            
+        c_obs, c_user = st.columns(2)
+        with c_obs:
+            obs = st.text_input("Observação (Opcional)")
+        with c_user:
+            usuario = st.selectbox("Quem está registrando?", ["Jack", "Loli"])
+            
+        submitted = st.form_submit_button("Lançar Transação", use_container_width=True)
+        if submitted:
+            execute_db(
+                "INSERT INTO lancamentos (tipo, categoria, valor, meio_pagamento, data, observacao, usuario) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (tipo, categoria, valor, meio_pagamento, data_trans.strftime('%Y-%m-%d'), obs, usuario)
+            )
+            st.success("Transação lançada com sucesso!")
 
-    # --- PÁGINA 3: HISTÓRICO DE LANÇAMENTOS ---
-    elif menu == "Histórico":
-        st.markdown("<h2 style='color: #2ecc71;'>📋 Todos os Registros</h2>", unsafe_allow_html=True)
+# --- MÓDULO 3: METAS (BOLETO PESSOAL) ---
+elif selected == "Metas":
+    st.markdown("## 🎯 Metas (Boleto Pessoal)")
+    st.caption("Acompanhe suas conquistas por nível e atualize seus saldos.")
+    
+    df_metas = run_query("SELECT * FROM metas")
+    
+    # Exibir cards de metas
+    for _, row in df_metas.iterrows():
+        pct = min(row['valor_atual'] / row['valor_objetivo'] if row['valor_objetivo'] > 0 else 0.0, 1.0)
+        with st.expander(f"📌 **{row['nome']}** — R$ {row['valor_atual']:,.2f} / R$ {row['valor_objetivo']:,.2f} ({pct*100:.1f}%)"):
+            st.write(f"**Descrição:** {row['descricao']}")
+            st.write(f"**Prazo Recomendado:** {row['prazo']}")
+            st.progress(pct)
+            
+            # Formulário para editar valores da meta diretamente no app
+            with st.form(f"form_meta_{row['id']}"):
+                col_m1, col_m2 = st.columns(2)
+                with col_m1:
+                    novo_atual = st.number_input("Valor Atual Salvo (R$)", value=float(row['valor_atual']), key=f"act_{row['id']}")
+                with col_m2:
+                    novo_obj = st.number_input("Meta / Objetivo (R$)", value=float(row['valor_objetivo']), key=f"obj_{row['id']}")
+                
+                if st.form_submit_button("Atualizar Meta"):
+                    execute_db("UPDATE metas SET valor_atual = ?, valor_objetivo = ? WHERE id = ?", (novo_atual, novo_obj, row['id']))
+                    st.success(f"Meta '{row['nome']}' atualizada!")
+                    st.rerun()
 
+    st.markdown("---")
+    st.markdown("### ➕ Adicionar Nova Meta")
+    with st.form("nova_meta", clear_on_submit=True):
+        nome_meta = st.text_input("Nome da Meta")
+        desc_meta = st.text_input("Descrição")
+        c_v1, c_v2, c_v3 = st.columns(3)
+        with c_v1:
+            val_in = st.number_input("Valor Inicial (R$)", min_value=0.0)
+        with c_v2:
+            val_ob = st.number_input("Objetivo Final (R$)", min_value=1.0)
+        with c_v3:
+            prz = st.text_input("Prazo estimado")
+            
+        if st.form_submit_button("Cadastrar Nova Meta"):
+            if nome_meta:
+                try:
+                    execute_db("INSERT INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)",
+                               (nome_meta, desc_meta, val_in, val_ob, prz))
+                    st.success("Nova meta cadastrada!")
+                    st.rerun()
+                except:
+                    st.error("Já existe uma meta com esse nome!")
+
+# --- MÓDULO 4: BENEFÍCIOS ---
+elif selected == "Benefícios":
+    st.markdown("## 🎁 Benefícios")
+    st.caption("Controle de vales (Alimentação, Refeição, Combustível).")
+    
+    df_ben = run_query("SELECT * FROM beneficios")
+    
+    cols = st.columns(len(df_ben) if len(df_ben) > 0 else 1)
+    for idx, (_, row) in enumerate(df_ben.iterrows()):
+        saldo_b = row['valor_mensal'] - row['valor_gasto']
+        with cols[idx % len(cols)]:
+            st.markdown(f"""
+            <div class="card-metric">
+                <div class="card-title">{row['nome']}</div>
+                <div style="font-size: 0.9rem; margin-top:5px;">Mensal: <b>R$ {row['valor_mensal']:,.2f}</b></div>
+                <div style="font-size: 0.9rem;">Gasto: <b style="color:#f87171">R$ {row['valor_gasto']:,.2f}</b></div>
+                <div class="card-value val-positive" style="font-size: 1.3rem; margin-top:8px;">Saldo: R$ {saldo_b:,.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Atualizar valores do benefício
+            with st.popover(f"⚙️ Editar {row['nome']}"):
+                with st.form(f"form_ben_{row['id']}"):
+                    nm = st.number_input("Valor Mensal do Benefício", value=float(row['valor_mensal']))
+                    ng = st.number_input("Valor Já Gasto", value=float(row['valor_gasto']))
+                    if st.form_submit_button("Salvar Benefício"):
+                        execute_db("UPDATE beneficios SET valor_mensal = ?, valor_gasto = ? WHERE id = ?", (nm, ng, row['id']))
+                        st.success("Atualizado!")
+                        st.rerun()
+
+    st.markdown("---")
+    st.markdown("### ➕ Cadastrar Novo Benefício")
+    with st.form("novo_beneficio", clear_on_submit=True):
+        nb_nome = st.text_input("Nome do Benefício (Ex: Vale Plano de Saúde)")
+        c_b1, c_b2 = st.columns(2)
+        with c_b1:
+            nb_mensal = st.number_input("Carga Mensal (R$)", min_value=0.0)
+        with c_b2:
+            nb_gasto = st.number_input("Gasto Atual (R$)", min_value=0.0)
+            
+        if st.form_submit_button("Cadastrar Benefício"):
+            if nb_nome:
+                try:
+                    execute_db("INSERT INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)",
+                               (nb_nome, nb_mensal, nb_gasto))
+                    st.success("Benefício adicionado!")
+                    st.rerun()
+                except:
+                    st.error("Benefício já cadastrado com esse nome.")
+
+# --- MÓDULO 5: HISTÓRICO (COM EDIÇÃO E EXCLUSÃO) ---
+elif selected == "Histórico":
+    st.markdown("## 📜 Histórico de Transações")
+    st.caption("Pesquise, edite ou remova lançamentos registrados.")
+    
+    df_all = run_query("SELECT * FROM lancamentos ORDER BY data DESC")
+    
+    if not df_all.empty:
+        # Filtros rápidos
+        f_tipo = st.multiselect("Filtrar por Tipo", options=["Despesa", "Receita"], default=["Despesa", "Receita"])
+        df_filtered = df_all[df_all['tipo'].isin(f_tipo)]
+        
+        st.markdown("---")
+        for _, row in df_filtered.iterrows():
+            cor_txt = "🔴" if row['tipo'] == "Despesa" else "🟢"
+            with st.expander(f"{cor_txt} {row['data']} - **{row['categoria']}**: R$ {row['valor']:,.2f} ({row['usuario']})"):
+                col_e1, col_e2 = st.columns([3, 1])
+                with col_e1:
+                    st.write(f"**Meio de Pagamento:** {row['meio_pagamento']}")
+                    st.write(f"**Observação:** {row['observacao'] if row['observacao'] else 'Sem observação'}")
+                with col_e2:
+                    # Botão para Deletar
+                    if st.button("🗑️ Deletar", key=f"del_{row['id']}"):
+                        execute_db("DELETE FROM lancamentos WHERE id = ?", (row['id'],))
+                        st.warning("Lançamento removido com sucesso!")
+                        st.rerun()
+                
+                # Formulário de Edição
+                st.markdown("---")
+                st.caption("Editar este lançamento:")
+                with st.form(f"edit_form_{row['id']}"):
+                    e_c1, e_c2 = st.columns(2)
+                    with e_c1:
+                        e_cat = st.text_input("Categoria", value=row['categoria'])
+                        e_val = st.number_input("Valor", value=float(row['valor']))
+                    with e_c2:
+                        e_obs = st.text_input("Observação", value=row['observacao'] if row['observacao'] else "")
+                        e_data = st.text_input("Data (AAAA-MM-DD)", value=str(row['data']))
+                        
+                    if st.form_submit_button("Salvar Alterações"):
+                        execute_db("UPDATE lancamentos SET categoria = ?, valor = ?, observacao = ?, data = ? WHERE id = ?",
+                                   (e_cat, e_val, e_obs, e_data, row['id']))
+                        st.success("Lançamento atualizado!")
+                        st.rerun()
+    else:
+        st.info("Nenhum lançamento encontrado no banco de dados.")
+
+# --- MÓDULO 6: ORÇAMENTO ---
+elif selected == "Orçamento":
+    st.markdown("## 📑 Orçamento e Limites por Categoria")
+    st.caption("Defina limites mensais para acompanhar o teto de gastos.")
+    
+    categorias = ["Habitação", "Dívidas", "Saúde", "Transporte", "Despesas Pessoais", "Educação", "Lazer"]
+    df_trans_m = run_query("SELECT categoria, SUM(valor) as total FROM lancamentos WHERE tipo = 'Despesa' AND strftime('%Y-%m', data) = ? GROUP BY categoria", (str_mes_ano,))
+    
+    gastos_dict = dict(zip(df_trans_m['categoria'], df_trans_m['total'])) if not df_trans_m.empty else {}
+    
+    for cat in categorias:
+        gasto_cat = gastos_dict.get(cat, 0.0)
+        with st.container():
+            st.markdown(f"""
+            <div class="card-metric">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:1.1rem; font-weight:700;">{cat}</span>
+                    <span style="color:#94a3b8;">Gasto Atual: <b>R$ {gasto_cat:,.2f}</b></span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
