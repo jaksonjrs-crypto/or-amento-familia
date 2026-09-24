@@ -102,7 +102,7 @@ if not st.session_state["logado"]:
                 nome_confirmado = verificar_login(usuario_input, senha_input)
                 if nome_confirmado:
                     st.session_state["logado"] = True
-                    st.session_state["nome_usuario"] = nome_confirmado[0]
+                    st.session_state["nome_usuario"] = nome_confirmado
                     st.session_state["username"] = usuario_input
                     st.rerun()
                 else:
@@ -110,12 +110,11 @@ if not st.session_state["logado"]:
 
 # --- APP AUTENTICADO ---
 else:
-    # --- NOVO MENU DE NAVEGAÇÃO ATRAENTE (SIDEBAR) ---
+    # --- MENU DE NAVEGAÇÃO ATRAENTE (SIDEBAR) ---
     with st.sidebar:
         st.markdown(f"<h3 style='text-align: center; color: #2ecc71;'>👋 Olá, {st.session_state['nome_usuario']}!</h3>", unsafe_allow_html=True)
         st.markdown("---")
         
-        # Menu customizado com ícones modernos
         menu = option_menu(
             menu_title="Navegação",
             options=["Dashboard", "Novo Lançamento", "Histórico"],
@@ -148,8 +147,7 @@ else:
             df['data'] = pd.to_datetime(df['data'])
             df['Mes_Ano'] = df['data'].dt.strftime('%m/%Y')
             
-            # Filtro de Mês estilizado na lateral direita
-            col_titulo, col_filtro = st.columns([2, 1])
+            col_titulo, col_filtro = st.columns()
             with col_filtro:
                 meses_disponiveis = sorted(df['Mes_Ano'].unique(), reverse=True)
                 mes_selecionado = st.selectbox("📅 Selecione o Mês de Análise", meses_disponiveis)
@@ -160,12 +158,9 @@ else:
             despesas = df_mes[df_mes['tipo'] == 'Despesa']['valor'].sum()
             saldo = receitas - despesas
             
-            # Cards de resumo visual atualizados
             col1, col2, col3 = st.columns(3)
             col1.metric("🟢 Renda Total do Mês", f"R$ {receitas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
             col2.metric("🔴 Despesas Totais", f"R$ {despesas:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            
-            # Cor dinâmica para o saldo (verde se positivo, vermelho se negativo)
             col3.metric("🔵 Saldo Final (Sobra)", f"R$ {saldo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."), 
                         delta=f"R$ {saldo:,.2f}", delta_color="normal" if saldo >= 0 else "inverse")
             
@@ -217,3 +212,10 @@ else:
             botao_salvar = st.form_submit_button("💾 Salvar Registro", use_container_width=True)
             
             if botao_salvar:
+                inserir_lancamento(data.strftime('%Y-%m-%d'), tipo, categoria, descricao, valor, meio_pagamento, st.session_state["nome_usuario"])
+                st.success("Registro adicionado com sucesso ao banco de dados!")
+
+    # --- PÁGINA 3: HISTÓRICO DE LANÇAMENTOS ---
+    elif menu == "Histórico":
+        st.markdown("<h2 style='color: #2ecc71;'>📋 Todos os Registros</h2>", unsafe_allow_html=True)
+
