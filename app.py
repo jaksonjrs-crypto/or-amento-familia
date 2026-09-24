@@ -2,34 +2,35 @@ import streamlit as st
 import pandas as pd
 import requests
 import json
+import io
 from datetime import datetime
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Jack & Loli - Finanças",
-    page_icon="💰",
+    page_title="Finanças J&L",
+    page_icon="💳",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS MINIMALISTA (COMPATÍVEL COM WEB E MOBILE) ---
+# --- CSS MINIMALISTA PARA WEB E MOBILE ---
 st.markdown("""
 <style>
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 2rem !important;
-        max-width: 650px;
+        max-width: 680px;
     }
     .card-metric {
         background-color: #1e293b;
         border: 1px solid #334155;
         border-radius: 10px;
-        padding: 12px;
+        padding: 10px;
         text-align: center;
-        margin-bottom: 10px;
+        margin-bottom: 8px;
     }
-    .card-title { color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }
-    .card-value { font-size: 1.3rem; font-weight: 700; margin-top: 2px; }
+    .card-title { color: #94a3b8; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+    .card-value { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
     .text-green { color: #10b981; }
     .text-red { color: #f43f5e; }
     .text-blue { color: #38bdf8; }
@@ -80,7 +81,7 @@ def salvar_dados(df):
     res = requests.patch(url, headers=headers, json=payload)
     return res.status_code == 200
 
-# --- ESTRUTURA DA SUA PLANILHA (GRUPOS E SUBGRUPOS) ---
+# --- ESTRUTURA DA PLANILHA (GRUPOS E SUBGRUPOS) ---
 ESTRUTURA = {
     "Receitas Fixas": ["Fonte de Renda 1 (Lílian)", "Fonte de Renda 2 (Jakson)", "Outros"],
     "Receitas Variáveis": ["13º Salário Líquido", "Férias", "Bônus e extras"],
@@ -120,22 +121,22 @@ ESTRUTURA = {
     "Benefícios": ["Vale Refeição", "Vale Alimentação", "Vale Combustível", "Outros"]
 }
 
-# --- GERENCIAMENTO DE NAVEGAÇÃO ---
+# --- ESTADO DE NAVEGAÇÃO ---
 if "page" not in st.session_state:
     st.session_state.page = "Lançar"
 
 if "usuario" not in st.session_state:
     st.session_state.usuario = "Jack"
 
-# --- CABEÇALHO RESPONSIVO ---
-col_u1, col_u2 = st.columns([2, 1])
+# --- CABEÇALHO COMPACTO ---
+col_u1, col_u2 = st.columns([3, 1])
 with col_u1:
-    st.title("💳 Finanças Jack & Loli")
+    st.markdown("<h3 style='margin:0;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
 with col_u2:
-    st.session_state.usuario = st.selectbox("Usuário", ["Jack", "Loli"], index=0 if st.session_state.usuario == "Jack" else 1)
+    st.session_state.usuario = st.selectbox("Usuário", ["Jack", "Loli"], index=0 if st.session_state.usuario == "Jack" else 1, label_visibility="collapsed")
 
-# --- BOTÕES DE NAVEGAÇÃO NATIVOS (Garantidos no Mobile) ---
-c_nav1, c_nav2, c_nav3 = st.columns(3)
+# --- NAVEGAÇÃO EM GRID (MOBILE FRIENDLY) ---
+c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
 with c_nav1:
     if st.button("➕ Lançar", use_container_width=True, type="primary" if st.session_state.page == "Lançar" else "secondary"):
         st.session_state.page = "Lançar"
@@ -148,19 +149,21 @@ with c_nav3:
     if st.button("📜 Histórico", use_container_width=True, type="primary" if st.session_state.page == "Histórico" else "secondary"):
         st.session_state.page = "Histórico"
         st.rerun()
+with c_nav4:
+    if st.button("⚙️ Editar", use_container_width=True, type="primary" if st.session_state.page == "Gerenciar" else "secondary"):
+        st.session_state.page = "Gerenciar"
+        st.rerun()
 
 st.markdown("---")
 
 # ==========================================
-# 1. TELA: LANÇAR (FIEL À PLANILHA)
+# 1. TELA: LANÇAR
 # ==========================================
 if st.session_state.page == "Lançar":
-    st.subheader("➕ Novo Lançamento")
+    st.markdown("#### ➕ Novo Lançamento")
     
-    # Tipo de Lançamento
     tipo = st.radio("Tipo de Operação", ["Despesa", "Receita", "Boleto Pessoal (Investimento)", "Benefício"], horizontal=True)
     
-    # Filtro de Grupos
     if tipo == "Receita":
         grupos_validos = ["Receitas Fixas", "Receitas Variáveis"]
     elif tipo == "Boleto Pessoal (Investimento)":
@@ -173,10 +176,7 @@ if st.session_state.page == "Lançar":
             "Despesas Pessoais (55%)", "Educação (5%)", "Lazer (10%)", "Outros Gastos (10%)"
         ]
 
-    # Seleção do Grupo
     grupo_selecionado = st.selectbox("Grupo (Categoria)", grupos_validos)
-    
-    # Seleção do Subgrupo encadeado
     subgrupos_validos = ESTRUTURA.get(grupo_selecionado, [])
     subgrupo_selecionado = st.selectbox("Subgrupo (Item)", subgrupos_validos)
     
@@ -187,9 +187,9 @@ if st.session_state.page == "Lançar":
             "Ticket Restaurante", "Sodexo", "Dinheiro"
         ])
         data_lancamento = st.date_input("Data", datetime.today())
-        observacao = st.text_input("Observação / Detalhe (Opcional)")
+        observacao = st.text_input("Observação (Opcional)")
         
-        btn_salvar = st.form_submit_button("Salvar no Gist", use_container_width=True, type="primary")
+        btn_salvar = st.form_submit_button("Salvar Registro", use_container_width=True, type="primary")
         
         if btn_salvar:
             novo_registro = {
@@ -210,13 +210,13 @@ if st.session_state.page == "Lançar":
             if salvar_dados(df_novo):
                 st.success(f"✅ Lançamento de R$ {valor:,.2f} salvo com sucesso!")
             else:
-                st.error("❌ Erro ao salvar dados no Gist. Verifique suas chaves.")
+                st.error("❌ Erro ao salvar dados no Gist.")
 
 # ==========================================
-# 2. TELA: RESUMO (ESTILO MÊS PLANILHA)
+# 2. TELA: RESUMO
 # ==========================================
 elif st.session_state.page == "Resumo":
-    st.subheader("📊 Resumo Mensal")
+    st.markdown("#### 📊 Resumo Mensal")
     df = carregar_dados()
     
     if not df.empty:
@@ -239,7 +239,7 @@ elif st.session_state.page == "Resumo":
             st.markdown(f'<div class="card-metric"><div class="card-title">Saldo</div><div class="card-value {"text-blue" if saldo >= 0 else "text-red"}">R$ {saldo:,.2f}</div></div>', unsafe_allow_html=True)
 
         if not df_mes.empty:
-            st.markdown("### Total por Grupo")
+            st.markdown("##### Total por Grupo")
             resumo_grupo = df_mes.groupby(["grupo", "tipo"])["valor"].sum().reset_index()
             st.dataframe(resumo_grupo, use_container_width=True, hide_index=True)
         else:
@@ -248,10 +248,10 @@ elif st.session_state.page == "Resumo":
         st.info("Nenhum dado encontrado no Gist.")
 
 # ==========================================
-# 3. TELA: HISTÓRICO
+# 3. TELA: HISTÓRICO & EXPORTAÇÃO
 # ==========================================
 elif st.session_state.page == "Histórico":
-    st.subheader("📜 Todos os Lançamentos")
+    st.markdown("#### 📜 Histórico e Exportação")
     df = carregar_dados()
     
     if not df.empty:
@@ -261,5 +261,97 @@ elif st.session_state.page == "Histórico":
             use_container_width=True,
             hide_index=True
         )
+        
+        st.markdown("---")
+        st.markdown("##### 📥 Exportar Relatório")
+        col_exp1, col_exp2 = st.columns(2)
+        
+        # Download Excel
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Lancamentos')
+        
+        with col_exp1:
+            st.download_button(
+                label="🟢 Baixar em Excel (.xlsx)",
+                data=buffer.getvalue(),
+                file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
+        # Download CSV
+        csv_data = df.to_csv(index=False).encode('utf-8')
+        with col_exp2:
+            st.download_button(
+                label="📄 Baixar em CSV",
+                data=csv_data,
+                file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
     else:
         st.info("Nenhum dado salvo até o momento.")
+
+# ==========================================
+# 4. TELA: GERENCIAR (EDITAR / DELETAR)
+# ==========================================
+elif st.session_state.page == "Gerenciar":
+    st.markdown("#### ⚙️ Editar ou Excluir Lançamentos")
+    df = carregar_dados()
+    
+    if not df.empty:
+        df["id"] = df["id"].astype(int)
+        
+        # Opções de Seleção de Registro
+        opcoes_registro = {
+            row["id"]: f"{row['data']} | {row['subgrupo']} | R$ {row['valor']:,.2f} ({row['usuario']})"
+            for _, row in df.sort_values(by="data", ascending=False).iterrows()
+        }
+        
+        selected_id = st.selectbox("Selecione o Lançamento para Alterar", list(opcoes_registro.keys()), format_func=lambda x: opcoes_registro[x])
+        
+        # Obter linha selecionada
+        idx_match = df.index[df['id'] == selected_id].tolist()
+        
+        if idx_match:
+            idx = idx_match[0]
+            item = df.loc[idx]
+            
+            st.markdown("---")
+            with st.form("form_edicao"):
+                st.markdown(f"**Editando ID:** `{item['id']}`")
+                
+                edit_data = st.date_input("Data", datetime.strptime(str(item["data"]), "%Y-%m-%d"))
+                edit_valor = st.number_input("Valor (R$)", min_value=0.01, value=float(item["valor"]), step=10.0, format="%.2f")
+                edit_subgrupo = st.text_input("Subgrupo", value=str(item["subgrupo"]))
+                edit_meio = st.selectbox("Meio de Pagamento", [
+                    "Transferência Bancária", "Pix", "Cartão de Crédito", "Cartão de Débito",
+                    "Ticket Restaurante", "Sodexo", "Dinheiro"
+                ], index=0)
+                edit_obs = st.text_input("Observação", value=str(item.get("observacao", "")))
+                
+                c_btn1, c_btn2 = st.columns(2)
+                with c_btn1:
+                    btn_atualizar = st.form_submit_button("✏️ Atualizar Lançamento", type="primary", use_container_width=True)
+                with c_btn2:
+                    btn_deletar = st.form_submit_button("🗑️ Excluir Lançamento", use_container_width=True)
+                
+                if btn_atualizar:
+                    df.at[idx, "data"] = edit_data.strftime("%Y-%m-%d")
+                    df.at[idx, "valor"] = float(edit_valor)
+                    df.at[idx, "subgrupo"] = edit_subgrupo
+                    df.at[idx, "meio_pagamento"] = edit_meio
+                    df.at[idx, "observacao"] = edit_obs
+                    
+                    if salvar_dados(df):
+                        st.success("✅ Registro atualizado com sucesso!")
+                        st.rerun()
+                        
+                if btn_deletar:
+                    df = df.drop(index=idx)
+                    if salvar_dados(df):
+                        st.warning("🗑️ Registro excluído com sucesso!")
+                        st.rerun()
+    else:
+        st.info("Nenhum lançamento cadastrado para editar.")
