@@ -13,26 +13,36 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS PARA AJUSTE DE ESPAÇAMENTO E MOBILE ---
+# --- CSS PERSONALIZADO (OCULTA BARRA DO STREAMLIT E AJUSTA CABEÇALHO) ---
 st.markdown("""
 <style>
-    /* Ajusta espaçamento do topo para não cortar no celular */
+    /* 1. OCULTA A BARRA SUPERIOR DO STREAMLIT (Share, GitHub, Menu, etc) */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+    
+    /* 2. OCULTA O RODAPÉ DO STREAMLIT */
+    footer {
+        display: none !important;
+    }
+
+    /* 3. AJUSTA ESPAÇAMENTO DO TOPO NO CELULAR */
     .block-container {
-        padding-top: 1.5rem !important;
+        padding-top: 1rem !important;
         padding-bottom: 2rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
         max-width: 650px;
     }
     
-    /* Garante que o texto das abas não quebre em várias linhas */
+    /* ESTILO DAS ABAS */
     button[data-baseweb="tab"] {
         padding-left: 8px !important;
         padding-right: 8px !important;
         font-size: 0.85rem !important;
     }
     
-    /* Estilo dos Cards do Resumo */
+    /* ESTILO DOS CARDS DE RESUMO */
     .card-metric {
         background-color: #1e293b;
         border: 1px solid #334155;
@@ -133,16 +143,14 @@ ESTRUTURA = {
     "Benefícios": ["Vale Refeição", "Vale Alimentação", "Vale Combustível", "Outros"]
 }
 
-# --- CABEÇALHO LIMPO E COMPACTO ---
-col_head1, col_head2 = st.columns([2, 1])
-with col_head1:
-    st.markdown("<h3 style='margin:0; padding:0; font-size:1.4rem;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
-with col_head2:
-    usuario_atual = st.selectbox("Usuário", ["Jack", "Loli"], index=0, label_visibility="collapsed")
+# --- CABEÇALHO EM DESTAQUE ---
+st.markdown("<h3 style='text-align: center; margin-top: 0px; margin-bottom: 8px; color: #f8fafc;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
 
-st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
+usuario_atual = st.selectbox("Usuário Ativo", ["Jack", "Loli"], index=0, label_visibility="collapsed")
 
-# --- NAVEGAÇÃO POR ABAS HORIZONTAIS NATIVAS (NÃO EMPILHA NO MOBILE) ---
+st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
+
+# --- NAVEGAÇÃO POR ABAS HORIZONTAIS NATIVAS ---
 tab_lancar, tab_resumo, tab_historico, tab_gerenciar = st.tabs([
     "➕ Novo", "📊 Resumo", "📜 Histórico", "⚙️ Editar"
 ])
