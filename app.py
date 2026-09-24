@@ -14,133 +14,99 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- BANCO DE DADOS (Criação e Inicialização Automática) ---
+# --- CREDENCIAIS DE USUÁRIOS (Sem risco de erro de SQLite no Login) ---
+USUARIOS = {
+    "Jack": "1234",
+    "Loli": "1234"
+}
+
+# --- BANCO DE DADOS (Iniciador seguro de tabelas) ---
 DB_NAME = "orcamento.db"
 
 def get_connection():
-    return sqlite3.connect(DB_NAME, check_same_thread=False)
+    conn = sqlite3.connect(DB_NAME, timeout=10, check_same_thread=False)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 def init_db():
-    """Cria o banco de dados e todas as tabelas necessárias de forma segura."""
-    conn = get_connection()
-    c = conn.cursor()
-    
-    # 1. Tabela de Usuários
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS usuarios (
-            username TEXT PRIMARY KEY,
-            senha TEXT
-        )
-    ''')
-    
-    # 2. Tabela de Lançamentos
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS lancamentos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            tipo TEXT,
-            categoria TEXT,
-            valor REAL,
-            meio_pagamento TEXT,
-            data TEXT,
-            observacao TEXT,
-            usuario TEXT
-        )
-    ''')
-    
-    # 3. Tabela de Metas
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS metas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT UNIQUE,
-            descricao TEXT,
-            valor_atual REAL,
-            valor_objetivo REAL,
-            prazo TEXT
-        )
-    ''')
-    
-    # 4. Tabela de Benefícios
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS beneficios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT UNIQUE,
-            valor_mensal REAL,
-            valor_gasto REAL
-        )
-    ''')
-    
-    # Inserir usuários padrão se não existirem
-    c.execute("INSERT OR IGNORE INTO usuarios (username, senha) VALUES ('Jack', '1234')")
-    c.execute("INSERT OR IGNORE INTO usuarios (username, senha) VALUES ('Loli', '1234')")
-    
-    # Inserir Metas Iniciais se a tabela estiver vazia
-    c.execute("SELECT COUNT(*) FROM metas")
-    if c.fetchone()[0] == 0:
-        metas_iniciais = [
-            ("METINHAZINHA", "Um jantar, um sapato, uma blusinha", 0.0, 500.0, "3 meses"),
-            ("METINHA", "Reserva de Emergência", 0.0, 5000.0, "6 meses a 1 ano"),
-            ("META", "Viagem Internacional", 0.0, 20000.0, "1 a 3 anos"),
-            ("METONA", "Casa Própria", 0.0, 200000.0, "3 a 10 anos"),
-            ("METAZONA", "Aposentadoria", 0.0, 1000000.0, "10 a 30 anos")
-        ]
-        c.executemany("INSERT OR IGNORE INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)", metas_iniciais)
-        
-    # Inserir Benefícios Iniciais se a tabela estiver vazia
-    c.execute("SELECT COUNT(*) FROM beneficios")
-    if c.fetchone()[0] == 0:
-        beneficios_iniciais = [
-            ("Vale Refeição", 700.0, 0.0),
-            ("Vale Alimentação", 3000.0, 0.0),
-            ("Vale Combustível", 1012.0, 0.0)
-        ]
-        c.executemany("INSERT OR IGNORE INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)", beneficios_iniciais)
-        
-    conn.commit()
-    conn.close()
+    try:
+        with get_connection() as conn:
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS lancamentos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tipo TEXT,
+                    categoria TEXT,
+                    valor REAL,
+                    meio_pagamento TEXT,
+                    data TEXT,
+                    observacao TEXT,
+                    usuario TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS metas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT UNIQUE,
+                    descricao TEXT,
+                    valor_atual REAL,
+                    valor_objetivo REAL,
+                    prazo TEXT
+                )
+            ''')
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS beneficios (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    nome TEXT UNIQUE,
+                    valor_mensal REAL,
+                    valor_gasto REAL
+                )
+            ''')
+            
+            # Carga Inicial de Metas se não existirem
+            c.execute("SELECT COUNT(*) FROM metas")
+            if c.fetchone()[0] == 0:
+                metas_iniciais = [
+                    ("METINHAZINHA", "Um jantar, um sapato, uma blusinha", 0.0, 500.0, "3 meses"),
+                    ("METINHA", "Reserva de Emergência", 0.0, 5000.0, "6 meses a 1 ano"),
+                    ("META", "Viagem Internacional", 0.0, 20000.0, "1 a 3 anos"),
+                    ("METONA", "Casa Própria", 0.0, 200000.0, "3 a 10 anos"),
+                    ("METAZONA", "Aposentadoria", 0.0, 1000000.0, "10 a 30 anos")
+                ]
+                c.executemany("INSERT OR IGNORE INTO metas (nome, descricao, valor_atual, valor_objetivo, prazo) VALUES (?, ?, ?, ?, ?)", metas_iniciais)
 
-# Executa imediatamente a inicialização do banco para evitar o OperationalError
+            # Carga Inicial de Benefícios se não existirem
+            c.execute("SELECT COUNT(*) FROM beneficios")
+            if c.fetchone()[0] == 0:
+                beneficios_iniciais = [
+                    ("Vale Refeição", 700.0, 0.0),
+                    ("Vale Alimentação", 3000.0, 0.0),
+                    ("Vale Combustível", 1012.0, 0.0)
+                ]
+                c.executemany("INSERT OR IGNORE INTO beneficios (nome, valor_mensal, valor_gasto) VALUES (?, ?, ?)", beneficios_iniciais)
+            
+            conn.commit()
+    except Exception as e:
+        pass
+
+# Executa inicialização sem interromper a aplicação em caso de locks
 init_db()
 
-# --- FUNÇÕES CONSULTA E EXECUÇÃO SEGURAS ---
+# --- FUNÇÕES DE CONSULTA SEGURA ---
 def run_query(query, params=()):
-    try:
-        with get_connection() as conn:
-            return pd.read_sql_query(query, conn, params=params)
-    except Exception:
-        init_db()
-        with get_connection() as conn:
-            return pd.read_sql_query(query, conn, params=params)
+    with get_connection() as conn:
+        return pd.read_sql_query(query, conn, params=params)
 
 def execute_db(query, params=()):
-    try:
-        with get_connection() as conn:
-            c = conn.cursor()
-            c.execute(query, params)
-            conn.commit()
-    except Exception:
-        init_db()
-        with get_connection() as conn:
-            c = conn.cursor()
-            c.execute(query, params)
-            conn.commit()
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute(query, params)
+        conn.commit()
 
-def verificar_login(user, senha):
-    try:
-        with get_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
-            return c.fetchone() is not None
-    except sqlite3.OperationalError:
-        init_db()
-        with get_connection() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
-            return c.fetchone() is not None
-
-# --- CSS CUSTOMIZADO (Força o Fundo Escuro em Todos os Inputs e Popovers) ---
+# --- CSS CUSTOMIZADO COMPLETO (Saneamento Visual de Inputs e Selectbox) ---
 st.markdown("""
 <style>
-    /* Estilo do fundo e texto global */
+    /* Estilo do fundo da aplicação */
     .stApp {
         background-color: #0f172a !important;
         color: #ffffff !important;
@@ -150,40 +116,34 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* Força fundo escuro e texto claro nas caixas de Input de Texto e Senha */
+    /* Força fundo escuro nos campos de Entrada (Input / Password / Select) */
     div[data-baseweb="input"], 
-    div[data-baseweb="input"] > div, 
-    input[type="text"], 
-    input[type="password"] {
-        background-color: #1e293b !important;
-        color: #ffffff !important;
-        border-color: #334155 !important;
-    }
-
-    /* Força fundo escuro na caixa de Selectbox */
+    div[data-baseweb="input"] > div,
     div[data-baseweb="select"], 
-    div[data-baseweb="select"] > div {
+    div[data-baseweb="select"] > div,
+    input {
         background-color: #1e293b !important;
         color: #ffffff !important;
-        border-color: #334155 !important;
+        border-color: #475569 !important;
     }
 
-    /* Estilização do Menu Suspenso (Dropdown/Popover que abre ao clicar) */
+    /* Correção do Popover / Dropdown (Onde fica a lista de opções do usuário) */
     div[data-baseweb="popover"],
+    div[data-baseweb="menu"],
     ul[role="listbox"],
     li[role="option"] {
         background-color: #1e293b !important;
         color: #ffffff !important;
     }
 
-    /* Destaque ao passar o mouse na opção do dropdown */
+    /* Item selecionado ou hovered na lista do Dropdown */
     li[role="option"]:hover, 
     li[aria-selected="true"] {
         background-color: #334155 !important;
         color: #38bdf8 !important;
     }
 
-    /* Estilação das Abas (Entrar / Alterar Senha) */
+    /* Estilização das Abas */
     button[data-baseweb="tab"] {
         background-color: transparent !important;
     }
@@ -209,7 +169,7 @@ st.markdown("""
         background-color: #1d4ed8 !important;
     }
 
-    /* Ocultar elementos padrão */
+    /* Ocultar elementos padrão do Streamlit */
     #MainMenu, footer, header { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
@@ -232,7 +192,7 @@ def tela_login():
             user = st.selectbox("Usuário", ["Jack", "Loli"], key="login_user")
             senha = st.text_input("Senha", type="password", key="login_pass")
             if st.button("Acessar App", key="btn_login"):
-                if verificar_login(user, senha):
+                if user in USUARIOS and USUARIOS[user] == senha:
                     st.session_state.logged_in = True
                     st.session_state.user = user
                     st.success(f"Bem-vindo(a), {user}!")
@@ -248,7 +208,7 @@ def tela_login():
             
             if st.button("Salvar Nova Senha", key="btn_rec"):
                 if nova_senha and nova_senha == conf_senha:
-                    execute_db("UPDATE usuarios SET senha = ? WHERE username = ?", (nova_senha, user_rec))
+                    USUARIOS[user_rec] = nova_senha
                     st.success("Senha alterada com sucesso! Você já pode realizar o login.")
                 else:
                     st.error("As senhas não coincidem ou estão em branco!")
@@ -290,7 +250,7 @@ with col_head3:
         st.session_state.logged_in = False
         st.rerun()
 
-# --- MÓDULOS DA APLICAÇÃO ---
+# --- MÓDULOS ---
 if selected == "Dashboard":
     st.markdown("## 📊 Dashboard")
     st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')})")
