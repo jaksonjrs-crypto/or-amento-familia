@@ -13,22 +13,20 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- INICIALIZAÇÃO DE SENHAS NA SESSÃO (Evita erros de gravação no SQLite) ---
+# --- SISTEMA DE AUTENTICAÇÃO SEGURO EM SESSÃO ---
 if "usuarios_db" not in st.session_state:
     st.session_state.usuarios_db = {
         "Jack": "1234",
         "Loli": "1234"
     }
 
-# --- BANCO DE DADOS (Conexão e Criação de Tabelas Sem Inserts Iniciais) ---
+# --- BANCO DE DADOS ---
 DB_NAME = "orcamento.db"
 
 def get_connection():
-    conn = sqlite3.connect(DB_NAME, timeout=10, check_same_thread=False)
-    return conn
+    return sqlite3.connect(DB_NAME, timeout=10, check_same_thread=False)
 
 def init_db():
-    """Cria as tabelas do banco de dados sem realizar escritas pesadas no arranque."""
     try:
         with get_connection() as conn:
             c = conn.cursor()
@@ -66,10 +64,8 @@ def init_db():
     except Exception:
         pass
 
-# Executa apenas a criação das estruturas
 init_db()
 
-# --- FUNÇÕES AUXILIARES DE BANCO DE DADOS ---
 def run_query(query, params=()):
     with get_connection() as conn:
         return pd.read_sql_query(query, conn, params=params)
@@ -80,68 +76,103 @@ def execute_db(query, params=()):
         c.execute(query, params)
         conn.commit()
 
-# --- CSS CUSTOMIZADO (Força o Fundo Escuro em Todos os Inputs e Popovers) ---
+# --- CSS CUSTOMIZADO COMPLETO (VISUAL ULTRA MODERNO & DARK) ---
 st.markdown("""
 <style>
-    /* Estilo do fundo e texto global */
+    /* 1. Fundo da Aplicação */
     .stApp {
-        background-color: #0f172a !important;
-        color: #ffffff !important;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+        color: #f8fafc !important;
+        font-family: 'Inter', sans-serif !important;
     }
     
     p, span, label, div, h1, h2, h3, h4, h5, h6 {
-        color: #ffffff !important;
+        color: #f8fafc !important;
     }
 
-    /* Correção visual total para Inputs de Texto, Senha e Selectbox */
+    /* 2. Formulários, Inputs e Selectboxes */
     div[data-baseweb="input"], 
     div[data-baseweb="input"] > div, 
     div[data-baseweb="select"], 
     div[data-baseweb="select"] > div,
-    input {
+    input, select {
         background-color: #1e293b !important;
         color: #ffffff !important;
-        border-color: #475569 !important;
+        border: 1px solid #334155 !important;
+        border-radius: 8px !important;
     }
 
-    /* Estilização das listas suspensas (Dropdown) */
+    /* 3. Correção de Popover, Dropdowns e Calendários */
     div[data-baseweb="popover"],
+    div[data-baseweb="menu"],
     ul[role="listbox"],
-    li[role="option"] {
+    li[role="option"],
+    div[role="dialog"],
+    div[data-baseweb="calendar"] {
         background-color: #1e293b !important;
+        color: #ffffff !important;
+        border: 1px solid #334155 !important;
+    }
+
+    li[role="option"]:hover, li[aria-selected="true"] {
+        background-color: #3b82f6 !important;
         color: #ffffff !important;
     }
 
-    li[role="option"]:hover, 
-    li[aria-selected="true"] {
-        background-color: #334155 !important;
-        color: #38bdf8 !important;
+    /* 4. Estilização de Tabelas (Fix da Tela Branca) */
+    .stDataFrame, div[data-testid="stTable"] {
+        background-color: #1e293b !important;
+        border-radius: 12px !important;
+        padding: 10px !important;
+        border: 1px solid #334155 !important;
     }
 
-    /* Estilização das Abas */
-    button[data-baseweb="tab"] {
+    iframe {
         background-color: transparent !important;
     }
-    button[data-baseweb="tab"] p {
-        color: #94a3b8 !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] p {
-        color: #38bdf8 !important;
-        font-weight: bold;
-    }
 
-    /* Estilo dos Botões */
-    .stButton>button {
-        background-color: #2563eb !important;
-        color: #ffffff !important;
-        border-radius: 8px;
-        border: none;
-        width: 100%;
+    /* 5. Cards Personalizados do Dashboard */
+    .metric-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s ease;
+    }
+    .metric-card:hover {
+        transform: translateY(-4px);
+    }
+    .metric-title {
+        color: #94a3b8 !important;
+        font-size: 0.9rem;
         font-weight: 600;
-        padding: 8px 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 8px;
+    }
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+    }
+    .val-receita { color: #10b981 !important; }
+    .val-despesa { color: #ef4444 !important; }
+    .val-saldo { color: #3b82f6 !important; }
+
+    /* 6. Estilo dos Botões */
+    .stButton>button {
+        background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 100%) !important;
+        color: #ffffff !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        padding: 10px 20px !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important;
     }
     .stButton>button:hover {
-        background-color: #1d4ed8 !important;
+        background: linear-gradient(90deg, #1d4ed8 0%, #1e40af 100%) !important;
     }
 
     #MainMenu, footer, header { visibility: hidden; }
@@ -155,10 +186,11 @@ if "logged_in" not in st.session_state:
 
 # --- TELA DE LOGIN ---
 def tela_login():
-    st.markdown("<h2 style='text-align: center;'>🔐 Acesso Restrito - Jack & Loli</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #94a3b8;'>Entre com suas credenciais para acessar o orçamento doméstico.</p>", unsafe_allow_html=True)
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; font-size: 2.2rem;'>🔐 Acesso Restrito - Jack & Loli</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #94a3b8; font-size: 1.05rem;'>Entre com suas credenciais para acessar o orçamento doméstico.</p>", unsafe_allow_html=True)
     
-    col_c1, col_c2, col_c3 = st.columns([1, 2, 1])
+    col_c1, col_c2, col_c3 = st.columns([1, 1.5, 1])
     with col_c2:
         tab_entrar, tab_esqueci = st.tabs(["🔑 Entrar", "🔄 Alterar / Esqueci a Senha"])
         
@@ -178,7 +210,6 @@ def tela_login():
                         st.error("Senha incorreta!")
                     
         with tab_esqueci:
-            st.caption("Redefina sua senha abaixo:")
             with st.form("form_alterar_senha"):
                 user_rec = st.selectbox("Selecione o Usuário", ["Jack", "Loli"], key="rec_user")
                 nova_senha = st.text_input("Nova Senha", type="password", key="rec_pass")
@@ -191,7 +222,7 @@ def tela_login():
                     
                     if len(n_senha) > 0 and n_senha == c_senha:
                         st.session_state.usuarios_db[user_rec] = n_senha
-                        st.success(f"Senha de {user_rec} alterada com sucesso! Você já pode realizar o login com a nova senha.")
+                        st.success(f"Senha de {user_rec} alterada com sucesso! Você já pode realizar o login.")
                     else:
                         st.error("As senhas não coincidem ou estão em branco!")
 
@@ -207,23 +238,23 @@ selected = option_menu(
     default_index=0,
     orientation="horizontal",
     styles={
-        "container": {"padding": "0!important", "background-color": "#0f172a", "border-bottom": "1px solid #1e293b"},
-        "icon": {"color": "#60a5fa", "font-size": "15px"},
+        "container": {"padding": "5px!important", "background-color": "#1e293b", "border-radius": "12px", "margin-bottom": "20px"},
+        "icon": {"color": "#60a5fa", "font-size": "16px"},
         "nav-link": {
             "font-size": "14px",
             "text-align": "center",
-            "margin": "4px",
+            "margin": "2px",
             "color": "#94a3b8",
-            "--hover-color": "#1e293b"
+            "--hover-color": "#334155"
         },
-        "nav-link-selected": {"background-color": "#2563eb", "color": "white", "font-weight": "600"},
+        "nav-link-selected": {"background-color": "#2563eb", "color": "white", "font-weight": "600", "border-radius": "8px"},
     }
 )
 
-# --- CABEÇALHO ---
-col_head1, col_head2, col_head3 = st.columns([2, 1, 1])
+# --- CABEÇALHO DA SESSÃO ---
+col_head1, col_head2, col_head3 = st.columns([2, 1.2, 0.8])
 with col_head1:
-    st.markdown(f"### 🔄 **Jack & Loli** ({st.session_state.user})")
+    st.markdown(f"### 👤 Usuário: **{st.session_state.user}**")
 with col_head2:
     mes_ano = st.date_input("Filtro de Período", datetime.today(), label_visibility="collapsed")
     str_mes_ano = mes_ano.strftime("%Y-%m")
@@ -232,10 +263,13 @@ with col_head3:
         st.session_state.logged_in = False
         st.rerun()
 
-# --- MÓDULOS ---
+st.markdown("<hr style='border: 0.5px solid #334155; margin-top: 5px; margin-bottom: 25px;'>", unsafe_allow_html=True)
+
+# --- MÓDULOS DA APLICAÇÃO ---
 if selected == "Dashboard":
-    st.markdown("## 📊 Dashboard")
-    st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')})")
+    st.markdown("## 📊 Dashboard Financeiro")
+    st.caption(f"Visão geral das finanças no período: **{mes_ano.strftime('%b/%Y')}**")
+    st.markdown("<br>", unsafe_allow_html=True)
     
     try:
         df_transacoes = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ?", (str_mes_ano,))
@@ -246,60 +280,90 @@ if selected == "Dashboard":
         
     saldo = receitas - despesas
     
+    # CARDS ESTILIZADOS
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.metric("Receitas", f"R$ {receitas:,.2f}")
+        st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-title">Receitas</div>
+                <div class="metric-value val-receita">R$ {receitas:,.2f}</div>
+            </div>
+        """, unsafe_allow_html=True)
     with c2:
-        st.metric("Despesas", f"R$ {despesas:,.2f}")
+        st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-title">Despesas</div>
+                <div class="metric-value val-despesa">R$ {despesas:,.2f}</div>
+            </div>
+        """, unsafe_allow_html=True)
     with c3:
-        st.metric("Saldo", f"R$ {saldo:,.2f}")
+        st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-title">Saldo</div>
+                <div class="metric-value val-saldo">R$ {saldo:,.2f}</div>
+            </div>
+        """, unsafe_allow_html=True)
 
 elif selected == "Lançar":
-    st.markdown("## ➕ Lançar Transação")
+    st.markdown("## ➕ Registar Nova Transação")
     with st.form("form_transacao", clear_on_submit=True):
-        tipo = st.radio("Tipo de Transação", ["Despesa", "Receita"], horizontal=True)
-        categoria = st.selectbox("Categoria", ["Habitação", "Alimentação", "Saúde", "Transporte", "Educação", "Lazer", "Despesas Pessoais", "Dívidas", "Investimentos", "Outros"])
-        valor = st.number_input("Valor (R$)", min_value=0.01, step=10.0, format="%.2f")
-        meio_pagamento = st.selectbox("Meio de Pagamento", ["PIX", "Cartão de Crédito", "Débito Automático", "Dinheiro", "Benefício"])
-        data_trans = st.date_input("Data", datetime.today())
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            tipo = st.radio("Tipo de Transação", ["Despesa", "Receita"], horizontal=True)
+            categoria = st.selectbox("Categoria", ["Habitação", "Alimentação", "Saúde", "Transporte", "Educação", "Lazer", "Despesas Pessoais", "Dívidas", "Investimentos", "Outros"])
+            valor = st.number_input("Valor (R$)", min_value=0.01, step=10.0, format="%.2f")
+        with col_f2:
+            meio_pagamento = st.selectbox("Meio de Pagamento", ["PIX", "Cartão de Crédito", "Débito Automático", "Dinheiro", "Benefício"])
+            data_trans = st.date_input("Data", datetime.today())
+            usuario = st.selectbox("Quem está registrando?", ["Jack", "Loli"], index=0 if st.session_state.user == "Jack" else 1)
+            
         obs = st.text_input("Observação (Opcional)")
-        usuario = st.selectbox("Quem está registrando?", ["Jack", "Loli"], index=0 if st.session_state.user == "Jack" else 1)
         
-        if st.form_submit_button("Salvar"):
+        if st.form_submit_button("Salvar Transação"):
             execute_db("INSERT INTO lancamentos (tipo, categoria, valor, meio_pagamento, data, observacao, usuario) VALUES (?, ?, ?, ?, ?, ?, ?)",
                        (tipo, categoria, valor, meio_pagamento, data_trans.strftime('%Y-%m-%d'), obs, usuario))
             st.success("Transação registrada com sucesso!")
 
 elif selected == "Metas":
-    st.markdown("## 🎯 Metas")
+    st.markdown("## 🎯 Acompanhamento de Metas")
     try:
         df_metas = run_query("SELECT * FROM metas")
         if df_metas.empty:
-            st.info("Nenhuma meta cadastrada.")
+            st.info("Nenhuma meta cadastrada até o momento.")
         else:
             for _, row in df_metas.iterrows():
-                st.subheader(row['nome'])
-                st.caption(row['descricao'])
-                st.write(f"Acumulado: R$ {row['valor_atual']:,.2f} de R$ {row['valor_objetivo']:,.2f}")
+                st.markdown(f"""
+                    <div class="metric-card" style="text-align: left; margin-bottom: 15px;">
+                        <h4 style="margin: 0; color: #38bdf8 !important;">{row['nome']}</h4>
+                        <p style="color: #94a3b8 !important; margin: 5px 0;">{row['descricao']}</p>
+                        <p style="font-weight: bold; margin: 0;">Acumulado: <span style="color: #10b981 !important;">R$ {row['valor_atual']:,.2f}</span> de R$ {row['valor_objetivo']:,.2f}</p>
+                    </div>
+                """, unsafe_allow_html=True)
     except Exception:
         st.info("Módulo de metas pronto para uso.")
 
 elif selected == "Benefícios":
-    st.markdown("## 🎁 Benefícios")
+    st.markdown("## 🎁 Benefícios e Vouchers")
     try:
         df_ben = run_query("SELECT * FROM beneficios")
-        st.dataframe(df_ben, use_container_width=True)
+        if not df_ben.empty:
+            st.dataframe(df_ben, use_container_width=True)
+        else:
+            st.info("Nenhum benefício cadastrado.")
     except Exception:
-        st.info("Sem benefícios cadastrados.")
+        st.info("Nenhum benefício cadastrado.")
 
 elif selected == "Histórico":
     st.markdown("## 📜 Histórico de Transações")
     try:
-        df_all = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ? ORDER BY data DESC", (str_mes_ano,))
-        st.dataframe(df_all, use_container_width=True)
+        df_all = run_query("SELECT id, data, tipo, categoria, valor, meio_pagamento, usuario, observacao FROM lancamentos WHERE strftime('%Y-%m', data) = ? ORDER BY data DESC", (str_mes_ano,))
+        if not df_all.empty:
+            st.dataframe(df_all, use_container_width=True)
+        else:
+            st.info("Sem lançamentos para este período selecionado.")
     except Exception:
-        st.info("Sem lançamentos para este período.")
+        st.info("Sem lançamentos para este período selecionado.")
 
 elif selected == "Orçamento":
-    st.markdown("## 📑 Orçamento por Categoria")
-    st.info("Planejamento e comparativo por categorias.")
+    st.markdown("## 📑 Planejamento Orçamentário")
+    st.info("Em breve: comparativo de orçamento planejado vs realizado.")
