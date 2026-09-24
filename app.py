@@ -14,7 +14,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS PERSONALIZADO (OCULTA CABEÇALHO DO STREAMLIT E AJUSTA VISUAL) ---
+# --- CSS PERSONALIZADO ---
 st.markdown("""
 <style>
     /* Oculta barra do Streamlit (Share, GitHub, etc) e Rodapé */
@@ -54,17 +54,36 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- TRATAMENTO DOS SECRETS (LIMPEZA DE RESÍDUOS/ESPAÇOS) ---
+# --- TRATAMENTO DOS SECRETS ---
 GIST_ID = str(st.secrets.get("GIST_ID", "")).strip().replace('"', '').replace("'", "")
 GITHUB_TOKEN = str(st.secrets.get("GITHUB_TOKEN", "")).strip().replace('"', '').replace("'", "")
 
 LOCAL_FILE = "dados_locais.csv"
 
+# --- TRATAMENTO E FORMATAÇÃO DO DATAFRAME ---
+def formatar_dataframe(df):
+    if df.empty:
+        return pd.DataFrame(columns=[
+            "id", "data", "tipo", "grupo", "subgrupo", "valor", "meio_pagamento", "usuario", "observacao"
+        ])
+    
+    # Força os tipos de cada coluna para evitar erro ao editar/atribuir textos
+    df["id"] = df["id"].astype(int)
+    df["data"] = df["data"].astype(str)
+    df["tipo"] = df["tipo"].astype(str)
+    df["grupo"] = df["grupo"].astype(str)
+    df["subgrupo"] = df["subgrupo"].astype(str)
+    df["valor"] = df["valor"].astype(float)
+    df["meio_pagamento"] = df["meio_pagamento"].astype(str)
+    df["usuario"] = df["usuario"].astype(str)
+    df["observacao"] = df["observacao"].fillna("").astype(str)
+    return df
+
 # --- FUNÇÕES DE PERSISTÊNCIA DE DADOS ---
 def carregar_dados():
+    df = pd.DataFrame()
     if GIST_ID and GITHUB_TOKEN:
         url = f"https://api.github.com/gists/{GIST_ID}"
-        # Testa os dois formatos de cabeçalho aceitos pelo GitHub
         for auth_prefix in ["token", "Bearer"]:
             headers = {
                 "Authorization": f"{auth_prefix} {GITHUB_TOKEN}",
@@ -78,21 +97,22 @@ def carregar_dados():
                     if "dados.json" in files:
                         content = files["dados.json"].get("content", "[]")
                         if content.strip():
-                            return pd.DataFrame(json.loads(content))
-                        return pd.DataFrame()
+                            df = pd.DataFrame(json.loads(content))
+                            break
             except Exception:
                 pass
 
-    # Fallback para arquivo local caso o Gist falhe
-    if os.path.exists(LOCAL_FILE):
+    if df.empty and os.path.exists(LOCAL_FILE):
         try:
-            return pd.read_csv(LOCAL_FILE)
+            df = pd.read_csv(LOCAL_FILE)
         except Exception:
-            return pd.DataFrame()
-    return pd.DataFrame()
+            df = pd.DataFrame()
+            
+    return formatar_dataframe(df)
 
 def salvar_dados(df):
     salvo_no_gist = False
+    df = formatar_dataframe(df)
     
     if GIST_ID and GITHUB_TOKEN:
         url = f"https://api.github.com/gists/{GIST_ID}"
@@ -117,7 +137,6 @@ def salvar_dados(df):
             except Exception:
                 pass
 
-    # Salva também cópia local para garantir a integridade dos seus lançamentos
     try:
         df.to_csv(LOCAL_FILE, index=False)
     except Exception:
@@ -255,7 +274,7 @@ with tab_lancar:
                 "valor": float(valor),
                 "meio_pagamento": meio_pagamento,
                 "usuario": st.session_state.usuario_logado,
-                "observacao": observacao
+                "observacao": str(observacao)
             }
             
             df_atual = carregar_dados()
@@ -274,10 +293,10 @@ with tab_resumo:
     df = carregar_dados()
     
     if not df.empty:
-        df["data"] = pd.to_datetime(df["data"])
+        df["data_dt"] = pd.to_datetime(df["data"])
         mes_ano_sel = st.date_input("Mês de Referência", datetime.today()).strftime("%Y-%m")
         
-        df_mes = df[df["data"].dt.strftime("%Y-%m") == mes_ano_sel]
+        df_mes = df[df["data_dt"].dt.strftime("%Y-%m") == mes_ano_sel]
         
         rec = df_mes[df_mes["tipo"] == "Receita"]["valor"].sum()
         desp = df_mes[df_mes["tipo"] == "Despesa"]["valor"].sum()
@@ -309,39 +328,25 @@ with tab_historico:
     df = carregar_dados()
     
     if not df.empty:
-        df = df.sort_values(by="data", ascending=False)
+        df_exibicao = df.sort_values(by="data", ascending=False)
         st.dataframe(
-            df[["data", "usuario", "tipo", "grupo", "subgrupo", "valor", "meio_pagamento", "observacao"]],
+            df_exibicao[["data", "usuario", "tipo", "grupo", "subgrupo", "valor", "meio_pagamento", "observacao"]],
             use_container_width=True,
             hide_index=True
         )
         
         st.markdown("---")
         st.markdown("###### 📥 Exportar Relatório")
-        col_exp1, col_exp2 = st.columns(2)
         
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df.to_excel(writer, index=False, sheet_name='Lancamentos')
-        
-        with col_exp1:
-            st.download_button(
-                label="🟢 Excel (.xlsx)",
-                data=buffer.getvalue(),
-                file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-            
-        csv_data = df.to_csv(index=False).encode('utf-8')
-        with col_exp2:
-            st.download_button(
-                label="📄 CSV",
-                data=csv_data,
-                file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+        csv_data = df_exibicao.to_csv(index=False, sep=";", encoding="utf-8-sig")
+        st.download_button(
+            label="📊 Baixar Relatório (Excel / CSV)",
+            data=csv_data,
+            file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+            type="primary"
+        )
     else:
         st.info("Nenhum dado para exportar.")
 
@@ -353,10 +358,8 @@ with tab_gerenciar:
     df = carregar_dados()
     
     if not df.empty:
-        df["id"] = df["id"].astype(int)
-        
         opcoes_registro = {
-            row["id"]: f"{row['data']} | {row['subgrupo']} | R$ {row['valor']:,.2f} ({row['usuario']})"
+            int(row["id"]): f"{row['data']} | {row['subgrupo']} | R$ {row['valor']:,.2f} ({row['usuario']})"
             for _, row in df.sort_values(by="data", ascending=False).iterrows()
         }
         
@@ -378,7 +381,7 @@ with tab_gerenciar:
                     "Transferência Bancária", "Pix", "Cartão de Crédito", "Cartão de Débito",
                     "Ticket Restaurante", "Sodexo", "Dinheiro"
                 ], index=0)
-                edit_obs = st.text_input("Observação", value=str(item.get("observacao", "")))
+                edit_obs = st.text_input("Observação", value=str(item["observacao"]))
                 
                 c_btn1, c_btn2 = st.columns(2)
                 with c_btn1:
@@ -387,14 +390,15 @@ with tab_gerenciar:
                     btn_deletar = st.form_submit_button("🗑️ Excluir", use_container_width=True)
                 
                 if btn_atualizar:
-                    df.at[idx, "data"] = edit_data.strftime("%Y-%m-%d")
-                    df.at[idx, "valor"] = float(edit_valor)
-                    df.at[idx, "subgrupo"] = edit_subgrupo
-                    df.at[idx, "meio_pagamento"] = edit_meio
-                    df.at[idx, "observacao"] = edit_obs
+                    # Atualização segura do registro inteiro sem erro de dtypes
+                    df.loc[idx, "data"] = edit_data.strftime("%Y-%m-%d")
+                    df.loc[idx, "valor"] = float(edit_valor)
+                    df.loc[idx, "subgrupo"] = str(edit_subgrupo)
+                    df.loc[idx, "meio_pagamento"] = str(edit_meio)
+                    df.loc[idx, "observacao"] = str(edit_obs)
                     
                     if salvar_dados(df):
-                        st.success("✅ Registro atualizado!")
+                        st.success("✅ Registro atualizado com sucesso!")
                         st.rerun()
                         
                 if btn_deletar:
