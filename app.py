@@ -4,6 +4,7 @@ import sqlite3
 import plotly.express as px
 from datetime import datetime
 from streamlit_option_menu import option_menu
+import base64
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
@@ -13,13 +14,39 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS CUSTOMIZADO (Visual Dark elegante idêntico às imagens) ---
+# --- CSS CUSTOMIZADO (Visual Dark elegante, Responsivo para Celular e Correção de Fontes Escuras) ---
 st.markdown("""
 <style>
+    /* Tags Meta para WebApp / PWA no Celular */
+    @media screen {
+        body {
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+    }
+    
     /* Estilo global dark */
     .stApp {
         background-color: #0b1120;
-        color: #f1f5f9;
+        color: #f1f5f9 !important;
+    }
+    
+    /* Forçar cores claras em todos os textos, inputs e selectboxes */
+    p, span, label, div, h1, h2, h3, h4, h5, h6 {
+        color: #f1f5f9 !important;
+    }
+    
+    /* Forçar texto visível em caixas de entrada (Inputs/Selectbox/Formulários) */
+    .stTextInput input, .stNumberInput input, .stDateInput input, .stSelectbox div {
+        color: #f1f5f9 !important;
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+    }
+    
+    /* Corrigir texto dentro dos menus dropdown / opções */
+    div[data-baseweb="popover"] div, div[data-baseweb="menu"] div, option {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
     }
     
     /* Ocultar elementos desnecessários */
@@ -37,7 +64,7 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
     .card-title {
-        color: #94a3b8;
+        color: #94a3b8 !important;
         font-size: 0.85rem;
         font-weight: 600;
         text-transform: uppercase;
@@ -48,26 +75,25 @@ st.markdown("""
         font-weight: 700;
         margin-top: 4px;
     }
-    .val-positive { color: #38bdf8; }
-    .val-negative { color: #f87171; }
-    .val-neutral { color: #60a5fa; }
+    .val-positive { color: #38bdf8 !important; }
+    .val-negative { color: #f87171 !important; }
+    .val-neutral { color: #60a5fa !important; }
     
-    /* Barras de progresso da Regra 55/5/10/30 */
-    .rule-container {
-        background-color: #1e293b;
-        border-radius: 12px;
-        padding: 18px;
-        border: 1px solid #334155;
-        margin-bottom: 20px;
+    /* Estilo dos Expandores no Histórico */
+    .streamlit-expanderHeader {
+        background-color: #1e293b !important;
+        color: #f1f5f9 !important;
+        border-radius: 8px;
     }
     
     /* Ajuste de botões */
     .stButton>button {
         border-radius: 8px;
         background-color: #2563eb;
-        color: white;
+        color: white !important;
         border: none;
         font-weight: 600;
+        width: 100%;
     }
     .stButton>button:hover {
         background-color: #1d4ed8;
@@ -81,6 +107,14 @@ DB_NAME = "orcamento.db"
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
+    
+    # Tabela de Usuários (Login)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS usuarios (
+            username TEXT PRIMARY KEY,
+            senha TEXT
+        )
+    ''')
     
     # Tabela de Lançamentos
     c.execute('''
@@ -118,6 +152,12 @@ def init_db():
         )
     ''')
     
+    # Inserir usuários padrão (se não existirem)
+    c.execute("SELECT COUNT(*) FROM usuarios")
+    if c.fetchone()[0] == 0:
+        c.execute("INSERT INTO usuarios VALUES ('Jack', '1234')")
+        c.execute("INSERT INTO usuarios VALUES ('Loli', '1234')")
+        
     # Inserção de dados iniciais para Metas (se vazio)
     c.execute("SELECT COUNT(*) FROM metas")
     if c.fetchone()[0] == 0:
@@ -159,6 +199,49 @@ def execute_db(query, params=()):
     conn.commit()
     conn.close()
 
+# --- SISTEMA DE AUTENTICAÇÃO E LOGIN ---
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user = ""
+
+def tela_login():
+    st.markdown("<h2 style='text-align: center;'>🔐 Acesso Restrito - Jack & Loli</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Entre com suas credenciais para acessar o orçamento doméstico.</p>", unsafe_allow_html=True)
+    
+    col_cen1, col_cen2, col_cen3 = st.columns([1, 2, 1])
+    with col_cen2:
+        tab_entrar, tab_esqueci = st.tabs(["🔑 Entrar", "🔄 Alterar / Esqueci a Senha"])
+        
+        with tab_entrar:
+            user = st.selectbox("Usuário", ["Jack", "Loli"])
+            senha = st.text_input("Senha", type="password")
+            if st.button("Acessar App"):
+                df_u = run_query("SELECT * FROM usuarios WHERE username = ? AND senha = ?", (user, senha))
+                if not df_u.empty:
+                    st.session_state.logged_in = True
+                    st.session_state.user = user
+                    st.success(f"Bem-vindo(a), {user}!")
+                    st.rerun()
+                else:
+                    st.error("Senha incorreta!")
+                    
+        with tab_esqueci:
+            st.caption("Redefina sua senha abaixo:")
+            user_rec = st.selectbox("Selecione o Usuário", ["Jack", "Loli"], key="rec_user")
+            nova_senha = st.text_input("Nova Senha", type="password", key="rec_pass")
+            conf_senha = st.text_input("Confirme a Nova Senha", type="password", key="rec_pass_conf")
+            
+            if st.button("Salvar Nova Senha"):
+                if nova_senha and nova_senha == conf_senha:
+                    execute_db("UPDATE usuarios SET senha = ? WHERE username = ?", (nova_senha, user_rec))
+                    st.success("Senha alterada com sucesso! Agora você pode entrar.")
+                else:
+                    st.error("As senhas não coincidem ou estão em branco!")
+
+if not st.session_state.logged_in:
+    tela_login()
+    st.stop()
+
 # --- BARRA DE NAVEGAÇÃO SUPERIOR ---
 selected = option_menu(
     menu_title=None,
@@ -180,18 +263,22 @@ selected = option_menu(
     }
 )
 
-# --- CABEÇALHO COM SELEÇÃO DE PERÍODO ---
-col_head1, col_head2 = st.columns([3, 1])
+# --- CABEÇALHO COM SELEÇÃO DE PERÍODO E SAÍDA ---
+col_head1, col_head2, col_head3 = st.columns([2, 1, 1])
 with col_head1:
-    st.markdown("### 🔄 **Jack & Loli**")
+    st.markdown(f"### 🔄 **Jack & Loli** ({st.session_state.user})")
 with col_head2:
     mes_ano = st.date_input("Filtro de Período", datetime.today(), label_visibility="collapsed")
     str_mes_ano = mes_ano.strftime("%Y-%m")
+with col_head3:
+    if st.button("🚪 Sair"):
+        st.session_state.logged_in = False
+        st.rerun()
 
 # --- MÓDULO 1: DASHBOARD ---
 if selected == "Dashboard":
     st.markdown("## 📊 Dashboard")
-    st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')}) — Olá, Jack & Loli!")
+    st.caption(f"Visão geral do mês ({mes_ano.strftime('%b/%Y')})")
     
     # Busca de dados do mês
     df_transacoes = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ?", (str_mes_ano,))
@@ -199,7 +286,7 @@ if selected == "Dashboard":
     receitas = df_transacoes[df_transacoes['tipo'] == 'Receita']['valor'].sum() if not df_transacoes.empty else 0.0
     despesas = df_transacoes[df_transacoes['tipo'] == 'Despesa']['valor'].sum() if not df_transacoes.empty else 0.0
     saldo = receitas - despesas
-    renda_base = receitas if receitas > 0 else 1.0 # Evita divisão por zero
+    renda_base = receitas if receitas > 0 else 1.0
     
     # Top Cards
     c1, c2, c3, c4 = st.columns(4)
@@ -262,8 +349,6 @@ if selected == "Dashboard":
         st.markdown("### 🍰 Despesas por Categoria")
         if not df_transacoes.empty and despesas > 0:
             df_desp = df_transacoes[df_transacoes['tipo'] == 'Despesa'].groupby('categoria')['valor'].sum().reset_index()
-            
-            # Paleta de cores para despesas em tons avermelhados/rosados elegantes (conforme solicitado)
             red_shades = ['#e11d48', '#f43f5e', '#fb7185', '#fda4af', '#9f1239', '#881337', '#be123c']
             
             fig = px.pie(
@@ -337,9 +422,9 @@ elif selected == "Lançar":
         with c_obs:
             obs = st.text_input("Observação (Opcional)")
         with c_user:
-            usuario = st.selectbox("Quem está registrando?", ["Jack", "Loli"])
+            usuario = st.selectbox("Quem está registrando?", ["Jack", "Loli"], index=0 if st.session_state.user == "Jack" else 1)
             
-        submitted = st.form_submit_button("Lançar Transação", use_container_width=True)
+        submitted = st.form_submit_button("Lançar Transação")
         if submitted:
             execute_db(
                 "INSERT INTO lancamentos (tipo, categoria, valor, meio_pagamento, data, observacao, usuario) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -354,7 +439,6 @@ elif selected == "Metas":
     
     df_metas = run_query("SELECT * FROM metas")
     
-    # Exibir cards de metas
     for _, row in df_metas.iterrows():
         pct = min(row['valor_atual'] / row['valor_objetivo'] if row['valor_objetivo'] > 0 else 0.0, 1.0)
         with st.expander(f"📌 **{row['nome']}** — R$ {row['valor_atual']:,.2f} / R$ {row['valor_objetivo']:,.2f} ({pct*100:.1f}%)"):
@@ -362,7 +446,6 @@ elif selected == "Metas":
             st.write(f"**Prazo Recomendado:** {row['prazo']}")
             st.progress(pct)
             
-            # Formulário para editar valores da meta diretamente no app
             with st.form(f"form_meta_{row['id']}"):
                 col_m1, col_m2 = st.columns(2)
                 with col_m1:
@@ -418,7 +501,6 @@ elif selected == "Benefícios":
             </div>
             """, unsafe_allow_html=True)
             
-            # Atualizar valores do benefício
             with st.popover(f"⚙️ Editar {row['nome']}"):
                 with st.form(f"form_ben_{row['id']}"):
                     nm = st.number_input("Valor Mensal do Benefício", value=float(row['valor_mensal']))
@@ -448,15 +530,82 @@ elif selected == "Benefícios":
                 except:
                     st.error("Benefício já cadastrado com esse nome.")
 
-# --- MÓDULO 5: HISTÓRICO (COM EDIÇÃO E EXCLUSÃO) ---
+# --- MÓDULO 5: HISTÓRICO & GERADOR DE RELATÓRIO PDF ---
 elif selected == "Histórico":
     st.markdown("## 📜 Histórico de Transações")
-    st.caption("Pesquise, edite ou remova lançamentos registrados.")
+    st.caption("Pesquise, edite, exclua ou imprima seus relatórios financeiros.")
     
-    df_all = run_query("SELECT * FROM lancamentos ORDER BY data DESC")
+    df_all = run_query("SELECT * FROM lancamentos WHERE strftime('%Y-%m', data) = ? ORDER BY data DESC", (str_mes_ano,))
     
+    # Gerador de Relatório Impresso / PDF (HTML Impresso)
     if not df_all.empty:
-        # Filtros rápidos
+        rec_tot = df_all[df_all['tipo'] == 'Receita']['valor'].sum()
+        desp_tot = df_all[df_all['tipo'] == 'Despesa']['valor'].sum()
+        saldo_tot = rec_tot - desp_tot
+        
+        # Criação da página HTML formatada para impressão
+        html_report = f"""
+        <html>
+        <head>
+            <title>Relatório Financeiro - {mes_ano.strftime('%m/%Y')}</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; padding: 20px; color: #333; }}
+                h1 {{ color: #1e293b; text-align: center; }}
+                .summary {{ display: flex; justify-content: space-between; background: #f8fafc; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #cbd5e1; }}
+                table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+                th, td {{ border: 1px solid #cbd5e1; padding: 8px; text-align: left; }}
+                th {{ background-color: #0f172a; color: white; }}
+                .despesa {{ color: #dc2626; font-weight: bold; }}
+                .receita {{ color: #16a34a; font-weight: bold; }}
+            </style>
+        </head>
+        <body>
+            <h1>Jack & Loli - Relatório Financeiro ({mes_ano.strftime('%m/%Y')})</h1>
+            <div class="summary">
+                <div><b>Receitas:</b> R$ {rec_tot:,.2f}</div>
+                <div><b>Despesas:</b> R$ {desp_tot:,.2f}</div>
+                <div><b>Saldo Final:</b> R$ {saldo_tot:,.2f}</div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Tipo</th>
+                        <th>Categoria</th>
+                        <th>Valor (R$)</th>
+                        <th>Pagamento</th>
+                        <th>Resp.</th>
+                        <th>Obs.</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        for _, r in df_all.iterrows():
+            cor_cls = "despesa" if r['tipo'] == "Despesa" else "receita"
+            html_report += f"""
+                <tr>
+                    <td>{r['data']}</td>
+                    <td class="{cor_cls}">{r['tipo']}</td>
+                    <td>{r['categoria']}</td>
+                    <td>R$ {r['valor']:,.2f}</td>
+                    <td>{r['meio_pagamento']}</td>
+                    <td>{r['usuario']}</td>
+                    <td>{r['observacao'] if r['observacao'] else ''}</td>
+                </tr>
+            """
+        html_report += """
+                </tbody>
+            </table>
+            <script>window.print();</script>
+        </body>
+        </html>
+        """
+        
+        b64 = base64.b64encode(html_report.encode()).decode()
+        href = f'<a href="data:text/html;base64,{b64}" download="Relatorio_{str_mes_ano}.html" style="background-color:#2563eb; color:white; padding:10px 18px; border-radius:8px; text-decoration:none; font-weight:bold; display:inline-block; margin-bottom:15px;">🖨️ Baixar / Imprimir Relatório PDF</a>'
+        st.markdown(href, unsafe_allow_html=True)
+
+    if not df_all.empty:
         f_tipo = st.multiselect("Filtrar por Tipo", options=["Despesa", "Receita"], default=["Despesa", "Receita"])
         df_filtered = df_all[df_all['tipo'].isin(f_tipo)]
         
@@ -469,13 +618,11 @@ elif selected == "Histórico":
                     st.write(f"**Meio de Pagamento:** {row['meio_pagamento']}")
                     st.write(f"**Observação:** {row['observacao'] if row['observacao'] else 'Sem observação'}")
                 with col_e2:
-                    # Botão para Deletar
                     if st.button("🗑️ Deletar", key=f"del_{row['id']}"):
                         execute_db("DELETE FROM lancamentos WHERE id = ?", (row['id'],))
                         st.warning("Lançamento removido com sucesso!")
                         st.rerun()
                 
-                # Formulário de Edição
                 st.markdown("---")
                 st.caption("Editar este lançamento:")
                 with st.form(f"edit_form_{row['id']}"):
@@ -493,7 +640,7 @@ elif selected == "Histórico":
                         st.success("Lançamento atualizado!")
                         st.rerun()
     else:
-        st.info("Nenhum lançamento encontrado no banco de dados.")
+        st.info("Nenhum lançamento encontrado neste mês.")
 
 # --- MÓDULO 6: ORÇAMENTO ---
 elif selected == "Orçamento":
