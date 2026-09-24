@@ -13,24 +13,45 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- CSS MINIMALISTA PARA WEB E MOBILE ---
+# --- CSS PERSONALIZADO (FORÇA O MENU HORIZONTAL NO MOBILE) ---
 st.markdown("""
 <style>
+    /* Reduz as margens superiores para otimizar espaço */
     .block-container {
         padding-top: 1rem !important;
         padding-bottom: 2rem !important;
         max-width: 680px;
     }
+    
+    /* FORÇA AS COLUNAS A FICAREM LADO A LADO NO CELULAR (MANTÉM O MENU HORIZONTAL) */
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: row !important;
+        gap: 0.25rem !important;
+        align-items: center !important;
+    }
+    
+    div[data-testid="column"] {
+        min-width: 0px !important;
+        flex: 1 1 0% !important;
+    }
+
+    /* Estilo dos botões para caberem no celular */
+    div[data-testid="column"] button {
+        padding: 4px 2px !important;
+        font-size: 0.8rem !important;
+    }
+
+    /* Cards Métricos */
     .card-metric {
         background-color: #1e293b;
         border: 1px solid #334155;
-        border-radius: 10px;
-        padding: 10px;
+        border-radius: 8px;
+        padding: 8px;
         text-align: center;
         margin-bottom: 8px;
     }
-    .card-title { color: #94a3b8; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
-    .card-value { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
+    .card-title { color: #94a3b8; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+    .card-value { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
     .text-green { color: #10b981; }
     .text-red { color: #f43f5e; }
     .text-blue { color: #38bdf8; }
@@ -131,14 +152,14 @@ if "usuario" not in st.session_state:
 # --- CABEÇALHO COMPACTO ---
 col_u1, col_u2 = st.columns([3, 1])
 with col_u1:
-    st.markdown("<h3 style='margin:0;'>💳 Finanças J&L</h3>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin:0; padding-top:4px;'>💳 Finanças J&L</h4>", unsafe_allow_html=True)
 with col_u2:
     st.session_state.usuario = st.selectbox("Usuário", ["Jack", "Loli"], index=0 if st.session_state.usuario == "Jack" else 1, label_visibility="collapsed")
 
-# --- NAVEGAÇÃO EM GRID (MOBILE FRIENDLY) ---
+# --- MENU FIXO HORIZONTAL LADO A LADO ---
 c_nav1, c_nav2, c_nav3, c_nav4 = st.columns(4)
 with c_nav1:
-    if st.button("➕ Lançar", use_container_width=True, type="primary" if st.session_state.page == "Lançar" else "secondary"):
+    if st.button("➕ Novo", use_container_width=True, type="primary" if st.session_state.page == "Lançar" else "secondary"):
         st.session_state.page = "Lançar"
         st.rerun()
 with c_nav2:
@@ -160,7 +181,7 @@ st.markdown("---")
 # 1. TELA: LANÇAR
 # ==========================================
 if st.session_state.page == "Lançar":
-    st.markdown("#### ➕ Novo Lançamento")
+    st.markdown("##### ➕ Novo Lançamento")
     
     tipo = st.radio("Tipo de Operação", ["Despesa", "Receita", "Boleto Pessoal (Investimento)", "Benefício"], horizontal=True)
     
@@ -216,7 +237,7 @@ if st.session_state.page == "Lançar":
 # 2. TELA: RESUMO
 # ==========================================
 elif st.session_state.page == "Resumo":
-    st.markdown("#### 📊 Resumo Mensal")
+    st.markdown("##### 📊 Resumo Mensal")
     df = carregar_dados()
     
     if not df.empty:
@@ -239,7 +260,7 @@ elif st.session_state.page == "Resumo":
             st.markdown(f'<div class="card-metric"><div class="card-title">Saldo</div><div class="card-value {"text-blue" if saldo >= 0 else "text-red"}">R$ {saldo:,.2f}</div></div>', unsafe_allow_html=True)
 
         if not df_mes.empty:
-            st.markdown("##### Total por Grupo")
+            st.markdown("###### Total por Grupo")
             resumo_grupo = df_mes.groupby(["grupo", "tipo"])["valor"].sum().reset_index()
             st.dataframe(resumo_grupo, use_container_width=True, hide_index=True)
         else:
@@ -251,7 +272,7 @@ elif st.session_state.page == "Resumo":
 # 3. TELA: HISTÓRICO & EXPORTAÇÃO
 # ==========================================
 elif st.session_state.page == "Histórico":
-    st.markdown("#### 📜 Histórico e Exportação")
+    st.markdown("##### 📜 Histórico e Exportação")
     df = carregar_dados()
     
     if not df.empty:
@@ -263,28 +284,26 @@ elif st.session_state.page == "Histórico":
         )
         
         st.markdown("---")
-        st.markdown("##### 📥 Exportar Relatório")
+        st.markdown("###### 📥 Exportar Relatório")
         col_exp1, col_exp2 = st.columns(2)
         
-        # Download Excel
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df.to_excel(writer, index=False, sheet_name='Lancamentos')
         
         with col_exp1:
             st.download_button(
-                label="🟢 Baixar em Excel (.xlsx)",
+                label="🟢 Excel (.xlsx)",
                 data=buffer.getvalue(),
                 file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
             
-        # Download CSV
         csv_data = df.to_csv(index=False).encode('utf-8')
         with col_exp2:
             st.download_button(
-                label="📄 Baixar em CSV",
+                label="📄 CSV",
                 data=csv_data,
                 file_name=f"financas_jl_{datetime.now().strftime('%Y%m%d')}.csv",
                 mime="text/csv",
@@ -297,21 +316,18 @@ elif st.session_state.page == "Histórico":
 # 4. TELA: GERENCIAR (EDITAR / DELETAR)
 # ==========================================
 elif st.session_state.page == "Gerenciar":
-    st.markdown("#### ⚙️ Editar ou Excluir Lançamentos")
+    st.markdown("##### ⚙️ Editar ou Excluir Lançamentos")
     df = carregar_dados()
     
     if not df.empty:
         df["id"] = df["id"].astype(int)
         
-        # Opções de Seleção de Registro
         opcoes_registro = {
             row["id"]: f"{row['data']} | {row['subgrupo']} | R$ {row['valor']:,.2f} ({row['usuario']})"
             for _, row in df.sort_values(by="data", ascending=False).iterrows()
         }
         
         selected_id = st.selectbox("Selecione o Lançamento para Alterar", list(opcoes_registro.keys()), format_func=lambda x: opcoes_registro[x])
-        
-        # Obter linha selecionada
         idx_match = df.index[df['id'] == selected_id].tolist()
         
         if idx_match:
@@ -333,9 +349,9 @@ elif st.session_state.page == "Gerenciar":
                 
                 c_btn1, c_btn2 = st.columns(2)
                 with c_btn1:
-                    btn_atualizar = st.form_submit_button("✏️ Atualizar Lançamento", type="primary", use_container_width=True)
+                    btn_atualizar = st.form_submit_button("✏️ Atualizar", type="primary", use_container_width=True)
                 with c_btn2:
-                    btn_deletar = st.form_submit_button("🗑️ Excluir Lançamento", use_container_width=True)
+                    btn_deletar = st.form_submit_button("🗑️ Excluir", use_container_width=True)
                 
                 if btn_atualizar:
                     df.at[idx, "data"] = edit_data.strftime("%Y-%m-%d")
